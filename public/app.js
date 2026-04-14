@@ -22,6 +22,62 @@ const vehiclesById = new Map();
 const enabledLines = new Set();
 let allLinesEnabledByDefault = true;
 
+// --- Smooth position animation ---
+//
+// Each animating marker carries marker._anim = {
+//   fromLat, fromLon, toLat, toLon, startTs, endTs
+// } and lives in the `animating` set. A single rAF loop ticks them
+// together; when a marker reaches its target, it drops out of the set
+// and the loop self-stops.
+
+const TWEEN_MS = 1000;
+const animating = new Set();
+let rafId = null;
+
+function interpolate(anim, now) {
+  if (now >= anim.endTs) return [anim.toLat, anim.toLon];
+  const t = (now - anim.startTs) / (anim.endTs - anim.startTs);
+  return [
+    anim.fromLat + (anim.toLat - anim.fromLat) * t,
+    anim.fromLon + (anim.toLon - anim.fromLon) * t,
+  ];
+}
+
+function animateTo(marker, lat, lon) {
+  const now = performance.now();
+  let fromLat, fromLon;
+  if (marker._anim) {
+    [fromLat, fromLon] = interpolate(marker._anim, now);
+  } else {
+    const cur = marker.getLatLng();
+    fromLat = cur.lat;
+    fromLon = cur.lng;
+  }
+  marker._anim = {
+    fromLat, fromLon,
+    toLat: lat, toLon: lon,
+    startTs: now,
+    endTs: now + TWEEN_MS,
+  };
+  animating.add(marker);
+  if (rafId === null) rafId = requestAnimationFrame(tick);
+}
+
+function tick() {
+  const now = performance.now();
+  for (const marker of animating) {
+    const anim = marker._anim;
+    if (!anim) { animating.delete(marker); continue; }
+    const [lat, lon] = interpolate(anim, now);
+    marker.setLatLng([lat, lon]);
+    if (now >= anim.endTs) {
+      marker._anim = null;
+      animating.delete(marker);
+    }
+  }
+  rafId = animating.size > 0 ? requestAnimationFrame(tick) : null;
+}
+
 const filterEl = document.getElementById("line-filter");
 const countEl = document.getElementById("tram-count");
 const sheet = document.getElementById("sheet");
@@ -153,7 +209,7 @@ function upsertVehicle(vehicle) {
     markers.set(vehicle.id, marker);
     if (isVisible(vehicle.line)) marker.addTo(map);
   } else {
-    marker.setLatLng([vehicle.lat, vehicle.lon]);
+    animateTo(marker, vehicle.lat, vehicle.lon);
     // Mutate the existing DOM instead of replacing the icon — this avoids
     // replaying the entry animation and the perceived "blink" on every tick.
     if (!updateMarkerInPlace(marker, vehicle)) {
@@ -165,7 +221,12 @@ function upsertVehicle(vehicle) {
 
 function removeVehicle(id) {
   const marker = markers.get(id);
-  if (marker) { map.removeLayer(marker); markers.delete(id); }
+  if (marker) {
+    animating.delete(marker);
+    marker._anim = null;
+    map.removeLayer(marker);
+    markers.delete(id);
+  }
   vehiclesById.delete(id);
   updateCount();
 }
