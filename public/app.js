@@ -18,11 +18,72 @@ const filterEl = document.getElementById("line-filter");
 const countEl = document.getElementById("tram-count");
 const sheet = document.getElementById("sheet");
 const sheetToggle = document.getElementById("sheet-toggle");
+const toggleAllBtn = document.getElementById("toggle-all");
 
 sheetToggle.addEventListener("click", () => {
   const open = sheet.classList.toggle("is-open");
   sheetToggle.setAttribute("aria-expanded", String(open));
 });
+
+toggleAllBtn.addEventListener("click", () => {
+  const anyVisible = allLinesEnabledByDefault || enabledLines.size > 0;
+  if (anyVisible) {
+    // Hide all
+    allLinesEnabledByDefault = false;
+    enabledLines.clear();
+    for (const chip of filterEl.querySelectorAll(".chip")) {
+      chip.setAttribute("data-on", "false");
+      chip.querySelector("input").checked = false;
+    }
+  } else {
+    // Show all
+    allLinesEnabledByDefault = true;
+    for (const chip of filterEl.querySelectorAll(".chip")) {
+      chip.setAttribute("data-on", "true");
+      chip.querySelector("input").checked = true;
+      enabledLines.add(chip.getAttribute("data-line"));
+    }
+  }
+  refreshToggleAllLabel();
+  refreshVisibility();
+  updateCount();
+});
+
+function refreshToggleAllLabel() {
+  const anyVisible = allLinesEnabledByDefault || enabledLines.size > 0;
+  toggleAllBtn.textContent = anyVisible ? "Hide all" : "Show all";
+}
+
+// Click a tram → show only that line. Click a tram of the same (isolated)
+// line → reset to show everything.
+function isolateLine(line) {
+  const alreadyIsolated =
+    !allLinesEnabledByDefault &&
+    enabledLines.size === 1 &&
+    enabledLines.has(line);
+
+  if (alreadyIsolated) {
+    allLinesEnabledByDefault = true;
+    for (const chip of filterEl.querySelectorAll(".chip")) {
+      const l = chip.getAttribute("data-line");
+      chip.setAttribute("data-on", "true");
+      chip.querySelector("input").checked = true;
+      enabledLines.add(l);
+    }
+  } else {
+    allLinesEnabledByDefault = false;
+    enabledLines.clear();
+    enabledLines.add(line);
+    for (const chip of filterEl.querySelectorAll(".chip")) {
+      const on = chip.getAttribute("data-line") === line;
+      chip.setAttribute("data-on", String(on));
+      chip.querySelector("input").checked = on;
+    }
+  }
+  refreshVisibility();
+  refreshToggleAllLabel();
+  updateCount();
+}
 
 function escapeAttr(v) {
   return String(v).replace(/[&<>"']/g, (c) => ({
@@ -80,6 +141,7 @@ function upsertVehicle(vehicle) {
   let marker = markers.get(vehicle.id);
   if (!marker) {
     marker = L.marker([vehicle.lat, vehicle.lon], { icon: makeIcon(vehicle) });
+    marker.on("click", () => isolateLine(vehiclesById.get(vehicle.id)?.line ?? vehicle.line));
     markers.set(vehicle.id, marker);
     if (isVisible(vehicle.line)) marker.addTo(map);
   } else {
@@ -119,6 +181,7 @@ function ensureLineChip(line) {
     else enabledLines.delete(line);
     chip.setAttribute("data-on", String(cb.checked));
     refreshVisibility();
+    refreshToggleAllLabel();
     updateCount();
   });
   enabledLines.add(line);
