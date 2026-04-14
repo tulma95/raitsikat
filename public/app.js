@@ -1,0 +1,173 @@
+const HELSINKI_CENTER = [60.170, 24.940];
+const ZOOM = 13;
+
+const map = L.map("map", { zoomControl: true, attributionControl: true })
+  .setView(HELSINKI_CENTER, ZOOM);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: '© OpenStreetMap',
+}).addTo(map);
+map.zoomControl.setPosition("bottomright");
+
+const markers = new Map();
+const vehiclesById = new Map();
+const enabledLines = new Set();
+let allLinesEnabledByDefault = true;
+
+const filterEl = document.getElementById("line-filter");
+const countEl = document.getElementById("tram-count");
+const sheet = document.getElementById("sheet");
+const sheetToggle = document.getElementById("sheet-toggle");
+
+sheetToggle.addEventListener("click", () => {
+  const open = sheet.classList.toggle("is-open");
+  sheetToggle.setAttribute("aria-expanded", String(open));
+});
+
+function escapeAttr(v) {
+  return String(v).replace(/[&<>"']/g, (c) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;",
+  }[c]));
+}
+
+function makeIcon(vehicle) {
+  const heading = Number(vehicle.heading) || 0;
+  const line = escapeAttr(vehicle.line);
+  return L.divIcon({
+    className: "",
+    html:
+      `<div class="tram-marker" data-line="${line}">` +
+        `<div class="tram-marker__arrow" style="transform: translate(-50%, 0) rotate(${heading}deg);"></div>` +
+        `<span>${line}</span>` +
+      `</div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+  });
+}
+
+// Update an existing marker's DOM in place — no icon rebuild, no animation replay.
+function updateMarkerInPlace(marker, vehicle) {
+  const root = marker._icon && marker._icon.firstElementChild;
+  if (!root) return false; // not yet attached; caller will create fresh
+  const arrow = root.firstElementChild;
+  const label = root.lastElementChild;
+  if (arrow) {
+    arrow.style.transform = `translate(-50%, 0) rotate(${Number(vehicle.heading) || 0}deg)`;
+  }
+  if (label && label.textContent !== vehicle.line) {
+    label.textContent = vehicle.line;
+    root.setAttribute("data-line", vehicle.line);
+  }
+  return true;
+}
+
+function isVisible(line) {
+  return allLinesEnabledByDefault || enabledLines.has(line);
+}
+
+function updateCount() {
+  const total = vehiclesById.size;
+  const shown = [...vehiclesById.values()].filter((v) => isVisible(v.line)).length;
+  countEl.textContent = allLinesEnabledByDefault
+    ? `${total} trams`
+    : `${shown} / ${total} trams`;
+}
+
+function upsertVehicle(vehicle) {
+  vehiclesById.set(vehicle.id, vehicle);
+  ensureLineChip(vehicle.line);
+
+  let marker = markers.get(vehicle.id);
+  if (!marker) {
+    marker = L.marker([vehicle.lat, vehicle.lon], { icon: makeIcon(vehicle) });
+    markers.set(vehicle.id, marker);
+    if (isVisible(vehicle.line)) marker.addTo(map);
+  } else {
+    marker.setLatLng([vehicle.lat, vehicle.lon]);
+    // Mutate the existing DOM instead of replacing the icon — this avoids
+    // replaying the entry animation and the perceived "blink" on every tick.
+    if (!updateMarkerInPlace(marker, vehicle)) {
+      marker.setIcon(makeIcon(vehicle));
+    }
+  }
+  updateCount();
+}
+
+function removeVehicle(id) {
+  const marker = markers.get(id);
+  if (marker) { map.removeLayer(marker); markers.delete(id); }
+  vehiclesById.delete(id);
+  updateCount();
+}
+
+function ensureLineChip(line) {
+  if (filterEl.querySelector(`.chip[data-line="${CSS.escape(line)}"]`)) return;
+
+  const chip = document.createElement("label");
+  chip.className = "chip";
+  chip.setAttribute("data-line", line);
+  chip.setAttribute("data-on", "true");
+  chip.innerHTML = `
+    <span class="chip__swatch" aria-hidden="true"></span>
+    <input type="checkbox" value="${escapeAttr(line)}" checked />
+    <span>${escapeAttr(line)}</span>
+  `;
+  const cb = chip.querySelector("input");
+  cb.addEventListener("change", () => {
+    allLinesEnabledByDefault = false;
+    if (cb.checked) enabledLines.add(line);
+    else enabledLines.delete(line);
+    chip.setAttribute("data-on", String(cb.checked));
+    refreshVisibility();
+    updateCount();
+  });
+  enabledLines.add(line);
+  filterEl.appendChild(chip);
+
+  // numeric-aware sort so "1, 2, 10" not "1, 10, 2"
+  const chips = Array.from(filterEl.querySelectorAll(".chip"));
+  chips.sort((a, b) =>
+    a.getAttribute("data-line").localeCompare(
+      b.getAttribute("data-line"),
+      undefined, { numeric: true }
+    )
+  );
+  chips.forEach((c) => filterEl.appendChild(c));
+}
+
+function refreshVisibility() {
+  for (const [id, vehicle] of vehiclesById) {
+    const marker = markers.get(id);
+    if (!marker) continue;
+    const visible = isVisible(vehicle.line);
+    const onMap = map.hasLayer(marker);
+    if (visible && !onMap) marker.addTo(map);
+    if (!visible && onMap) map.removeLayer(marker);
+  }
+}
+
+function handleMessage(msg) {
+  if (msg.type === "snapshot") {
+    for (const v of msg.vehicles) upsertVehicle(v);
+  } else if (msg.type === "update") {
+    upsertVehicle(msg.vehicle);
+  } else if (msg.type === "remove") {
+    removeVehicle(msg.id);
+  }
+}
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(`${proto}//${location.host}/ws`);
+  let retry = 1000;
+
+  ws.addEventListener("open", () => { retry = 1000; });
+  ws.addEventListener("message", (ev) => handleMessage(JSON.parse(ev.data)));
+  ws.addEventListener("close", () => {
+    setTimeout(connect, retry);
+    retry = Math.min(retry * 2, 30_000);
+  });
+  ws.addEventListener("error", () => { /* close handler will reconnect */ });
+}
+
+connect();

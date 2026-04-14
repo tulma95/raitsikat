@@ -1,0 +1,391 @@
+:root {
+  --bg: #0d0f12;
+  --bg-soft: #14171c;
+  --bg-raised: #1a1f26;
+  --line: rgba(255,255,255,0.07);
+  --line-strong: rgba(255,255,255,0.14);
+  --ink: #ecece6;
+  --ink-dim: #8a8f98;
+  --ink-faint: #5a5f68;
+  --accent: #22d3b8;
+  --accent-glow: rgba(34,211,184,0.35);
+  --warn: #ffb347;
+  --danger: #ff6b6b;
+  --display: "Fraunces", ui-serif, Georgia, serif;
+  --body: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
+  --shadow-2: 0 12px 48px rgba(0,0,0,0.55);
+  --radius: 14px;
+  --sheet-peek: 104px;
+  --sheet-full: min(68vh, 520px);
+  --topbar-h: 72px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior: none;
+}
+
+body {
+  /* subtle noise overlay for warmth */
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(34,211,184,0.05), transparent 60%),
+    radial-gradient(800px 500px at -10% 110%, rgba(255,180,100,0.04), transparent 55%),
+    var(--bg);
+}
+
+/* MAP ----------------------------------------------------------- */
+
+#map {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: var(--bg);
+}
+
+/* Tone the map: Leaflet tiles get a subtle overlay treatment */
+.leaflet-container {
+  background: var(--bg) !important;
+  font-family: var(--body);
+}
+.leaflet-tile {
+  filter: grayscale(0.55) contrast(0.92) brightness(0.74) hue-rotate(-5deg);
+}
+.leaflet-control-attribution {
+  background: rgba(13,15,18,0.7) !important;
+  color: var(--ink-dim) !important;
+  backdrop-filter: blur(8px);
+  border-radius: 8px;
+  padding: 2px 8px !important;
+  margin: 6px !important;
+  font-size: 10px !important;
+}
+.leaflet-control-attribution a { color: var(--ink) !important; }
+.leaflet-bar {
+  border: none !important;
+  box-shadow: var(--shadow-1) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+}
+.leaflet-bar a {
+  background: var(--bg-raised) !important;
+  color: var(--ink) !important;
+  border-bottom-color: var(--line) !important;
+  width: 40px !important;
+  height: 40px !important;
+  line-height: 40px !important;
+  font-size: 18px !important;
+}
+.leaflet-bar a:hover { background: var(--bg-soft) !important; }
+
+/* TOPBAR -------------------------------------------------------- */
+
+#topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px calc(14px + env(safe-area-inset-top)) 18px;
+  padding-top: calc(14px + env(safe-area-inset-top));
+  background: linear-gradient(180deg, rgba(13,15,18,0.92) 0%, rgba(13,15,18,0.72) 70%, rgba(13,15,18,0) 100%);
+  pointer-events: none;
+}
+#topbar > * { pointer-events: auto; }
+
+.brand h1 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 600;
+  font-variation-settings: "opsz" 48, "SOFT" 50;
+  font-size: clamp(22px, 4.2vw, 30px);
+  letter-spacing: -0.015em;
+  line-height: 1;
+}
+.brand__sub {
+  margin: 4px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  font-weight: 500;
+}
+
+/* BOTTOM SHEET (mobile) / SIDE RAIL (desktop) ------------------- */
+
+#sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 600;
+  background: linear-gradient(180deg, rgba(26,31,38,0.96), rgba(20,23,28,0.96));
+  border-top: 1px solid var(--line-strong);
+  border-radius: 20px 20px 0 0;
+  box-shadow: var(--shadow-2);
+  backdrop-filter: blur(16px);
+  max-height: var(--sheet-peek);
+  transition: max-height 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+#sheet.is-open { max-height: var(--sheet-full); }
+
+#sheet-toggle {
+  all: unset;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 10px 20px 14px;
+  cursor: pointer;
+}
+
+.sheet__handle {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: 44px;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--line-strong);
+  margin-bottom: 4px;
+}
+
+.sheet__title {
+  font-family: var(--display);
+  font-weight: 600;
+  font-variation-settings: "opsz" 24;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+
+.sheet__count {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
+  font-weight: 500;
+  font-feature-settings: "tnum" 1;
+}
+
+#sheet-body {
+  padding: 4px 20px 20px;
+  overflow-y: auto;
+  max-height: calc(var(--sheet-full) - 64px);
+}
+
+#line-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  --chip-bg: rgba(255,255,255,0.04);
+  --chip-ink: var(--ink);
+  --chip-border: var(--line);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 8px 12px;
+  background: var(--chip-bg);
+  color: var(--chip-ink);
+  border: 1px solid var(--chip-border);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 140ms ease, background 160ms ease, border-color 160ms ease, color 160ms ease;
+  min-height: 36px;
+  white-space: nowrap;
+}
+.chip:hover {
+  border-color: var(--line-strong);
+}
+.chip:active { transform: scale(0.96); }
+.chip input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.chip[data-on="true"] {
+  --chip-bg: rgba(34,211,184,0.12);
+  --chip-ink: var(--accent);
+  --chip-border: rgba(34,211,184,0.45);
+}
+.chip__swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 2px rgba(34,211,184,0.12);
+  opacity: 0.6;
+}
+.chip[data-on="true"] .chip__swatch { opacity: 1; }
+
+.sheet__footnote {
+  margin: 18px 0 0;
+  font-size: 11px;
+  color: var(--ink-faint);
+  letter-spacing: 0.02em;
+}
+.sheet__footnote a { color: var(--ink-dim); text-decoration: underline; text-underline-offset: 2px; }
+
+/* TRAM MARKERS -------------------------------------------------- */
+
+.tram-marker {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #062a26;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: -0.02em;
+  border: 2px solid rgba(13,15,18,0.85);
+  box-shadow:
+    0 0 0 1px rgba(34,211,184,0.35),
+    0 4px 14px rgba(0,0,0,0.55),
+    0 0 18px rgba(34,211,184,0.25);
+  animation: markerIn 380ms cubic-bezier(0.2, 1.2, 0.3, 1);
+  will-change: transform;
+}
+.tram-marker__arrow {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 9px solid var(--accent);
+  filter: drop-shadow(0 0 4px rgba(34,211,184,0.5));
+  transform-origin: 50% 24px;
+  pointer-events: none;
+}
+@keyframes markerIn {
+  from { transform: scale(0.4); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+/* MOBILE-FIRST: everything above is mobile. Now add desktop. --- */
+
+@media (min-width: 760px) {
+  :root {
+    --topbar-h: 92px;
+  }
+  body {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+  }
+  #map {
+    position: fixed;
+    left: 340px;
+    top: 0;
+    bottom: 0;
+    right: 0;
+  }
+  #topbar {
+    position: fixed;
+    top: 0;
+    left: 340px;
+    right: 0;
+    background: linear-gradient(180deg, rgba(13,15,18,0.7) 0%, rgba(13,15,18,0) 100%);
+    padding: 18px 24px;
+  }
+  /* Promote the bottom sheet into a left rail */
+  #sheet {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: auto;
+    width: 340px;
+    max-height: none;
+    background: linear-gradient(180deg, var(--bg-soft), var(--bg));
+    border-radius: 0;
+    border-top: none;
+    border-right: 1px solid var(--line);
+    box-shadow: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #sheet-toggle {
+    cursor: default;
+    padding: 28px 24px 16px;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+  }
+  .sheet__handle { display: none; }
+  .sheet__title {
+    font-size: 36px;
+    font-variation-settings: "opsz" 72;
+    grid-column: 1 / -1;
+  }
+  .sheet__title::before {
+    content: "Raitsikat ";
+    display: block;
+    font-family: var(--body);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .sheet__count {
+    grid-column: 1 / -1;
+    justify-self: start;
+    margin-top: 6px;
+    font-size: 12px;
+  }
+  #sheet-body {
+    padding: 18px 24px 24px;
+    max-height: none;
+    flex: 1;
+  }
+  /* Hide the mobile-style topbar brand on desktop — the rail carries it */
+  .brand { display: none; }
+  #topbar {
+    justify-content: flex-end;
+  }
+}
+
+@media (min-width: 1200px) {
+  body { grid-template-columns: 380px 1fr; }
+  #map { left: 380px; }
+  #topbar { left: 380px; }
+  #sheet { width: 380px; }
+}
+
+/* Reduced motion ------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  .tram-marker { animation: none; }
+  #sheet { transition: none; }
+}
