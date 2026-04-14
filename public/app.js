@@ -1,10 +1,18 @@
 const HELSINKI_CENTER = [60.170, 24.940];
 const ZOOM = 13;
+const HELSINKI_BOUNDS = L.latLngBounds([60.10, 24.78], [60.30, 25.25]);
 
-const map = L.map("map", { zoomControl: true, attributionControl: true })
-  .setView(HELSINKI_CENTER, ZOOM);
+const map = L.map("map", {
+  zoomControl: true,
+  attributionControl: true,
+  maxBounds: HELSINKI_BOUNDS,
+  maxBoundsViscosity: 1.0,
+  minZoom: 11,
+}).setView(HELSINKI_CENTER, ZOOM);
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
+  minZoom: 11,
+  bounds: HELSINKI_BOUNDS,
   attribution: '© OpenStreetMap',
 }).addTo(map);
 map.zoomControl.setPosition("bottomright");

@@ -312,7 +312,6 @@ body {
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
   border-bottom: 9px solid var(--accent);
-  filter: drop-shadow(0 0 4px rgba(34,211,184,0.5));
   transform-origin: 50% 24px;
   pointer-events: none;
 }
