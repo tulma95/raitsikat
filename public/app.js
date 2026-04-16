@@ -278,28 +278,69 @@ function refreshVisibility() {
   }
 }
 
-function handleMessage(msg) {
-  if (msg.type === "snapshot") {
-    for (const v of msg.vehicles) upsertVehicle(v);
-  } else if (msg.type === "update") {
-    upsertVehicle(msg.vehicle);
-  } else if (msg.type === "remove") {
-    removeVehicle(msg.id);
+function trackConnection(es) {
+  const el = document.getElementById("conn-toast");
+  const label = el.querySelector(".conn-toast__label");
+  let graceTimer = null;
+  let escalateTimer = null;
+
+  const clearTimers = () => {
+    if (graceTimer) { clearTimeout(graceTimer); graceTimer = null; }
+    if (escalateTimer) { clearTimeout(escalateTimer); escalateTimer = null; }
+  };
+  const show = (state, text) => {
+    el.setAttribute("data-state", state);
+    label.textContent = text;
+    el.hidden = false;
+  };
+  const hide = () => {
+    el.hidden = true;
+    el.removeAttribute("data-state");
+  };
+
+  es.addEventListener("open", () => {
+    clearTimers();
+    hide();
+  });
+  es.addEventListener("error", () => {
+    // EventSource will reconnect automatically. Show UI only after 2s.
+    if (graceTimer || escalateTimer) return;
+    graceTimer = setTimeout(() => {
+      graceTimer = null;
+      show("reconnecting", "Reconnecting to tram feed…");
+      escalateTimer = setTimeout(() => {
+        escalateTimer = null;
+        show("offline", "Offline — waiting for connection");
+      }, 30_000);
+    }, 2_000);
+  });
+}
+
+function handleSnapshot(vehicles) {
+  const incomingIds = new Set(vehicles.map((v) => v.id));
+  // Snapshot the keys first — removeVehicle mutates vehiclesById.
+  for (const id of [...vehiclesById.keys()]) {
+    if (!incomingIds.has(id)) removeVehicle(id);
   }
+  for (const v of vehicles) upsertVehicle(v);
 }
 
 function connect() {
-  const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const ws = new WebSocket(`${proto}//${location.host}/ws`);
-  let retry = 1000;
-
-  ws.addEventListener("open", () => { retry = 1000; });
-  ws.addEventListener("message", (ev) => handleMessage(JSON.parse(ev.data)));
-  ws.addEventListener("close", () => {
-    setTimeout(connect, retry);
-    retry = Math.min(retry * 2, 30_000);
+  const es = new EventSource("/events");
+  trackConnection(es);
+  es.addEventListener("snapshot", (ev) => {
+    const { vehicles } = JSON.parse(ev.data);
+    handleSnapshot(vehicles);
   });
-  ws.addEventListener("error", () => { /* close handler will reconnect */ });
+  es.addEventListener("update", (ev) => {
+    const { vehicle } = JSON.parse(ev.data);
+    upsertVehicle(vehicle);
+  });
+  es.addEventListener("remove", (ev) => {
+    const { id } = JSON.parse(ev.data);
+    removeVehicle(id);
+  });
+  return es;
 }
 
 connect();

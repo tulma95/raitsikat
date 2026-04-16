@@ -417,3 +417,71 @@ body {
   .tram-marker { animation: none; }
   #sheet { transition: none; }
 }
+
+/* CONNECTION TOAST --------------------------------------------- */
+
+#conn-toast {
+  position: fixed;
+  top: calc(14px + env(safe-area-inset-top));
+  left: 50%;
+  z-index: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(26,31,38,0.94);
+  border: 1px solid transparent;
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  box-shadow: var(--shadow-1);
+  backdrop-filter: blur(8px);
+  transform: translate(-50%, -12px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+#conn-toast[data-state="reconnecting"] {
+  border-color: rgba(255,179,71,0.5);
+  color: #ffcf88;
+}
+#conn-toast[data-state="offline"] {
+  border-color: rgba(255,107,107,0.55);
+  color: #ff9b9b;
+}
+#conn-toast:not([hidden]) {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.conn-toast__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+  animation: connPulse 1.2s ease-in-out infinite;
+}
+@keyframes connPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@media (min-width: 760px) {
+  #conn-toast {
+    left: auto;
+    right: 24px;
+    top: 24px;
+    transform: translate(0, -12px);
+  }
+  #conn-toast:not([hidden]) {
+    transform: translate(0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #conn-toast { transition: none; }
+  .conn-toast__dot { animation: none; }
+}

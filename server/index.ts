@@ -1,10 +1,9 @@
 import express from "express";
-import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createState } from "./state.ts";
 import { startMqttClient } from "./mqtt-client.ts";
-import { startWsServer } from "./ws-server.ts";
+import { startSseServer } from "./sse-server.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 3000);
@@ -17,8 +16,7 @@ setInterval(() => state.evict(), EVICT_INTERVAL_MS).unref();
 const app = express();
 app.use(express.static(join(__dirname, "..", "public")));
 
-const server = createServer(app);
-startWsServer({ server, state });
+startSseServer({ app, state });
 
 startMqttClient({
   state,
@@ -26,6 +24,6 @@ startMqttClient({
   onError: (err) => console.error("[mqtt] error:", err.message),
 });
 
-server.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`[http] listening on http://localhost:${PORT}`);
 });
