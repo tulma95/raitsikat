@@ -7,8 +7,8 @@
     "doc": "docs"
   },
   "scripts": {
-    "start": "node server/index.ts",
-    "dev": "node --watch server/index.ts",
+    "start": "node --env-file-if-exists=.env server/index.ts",
+    "dev": "node --watch --env-file-if-exists=.env server/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],

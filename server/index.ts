@@ -4,6 +4,8 @@ import { dirname, join } from "node:path";
 import { createState } from "./state.ts";
 import { startMqttClient } from "./mqtt-client.ts";
 import { startSseServer } from "./sse-server.ts";
+import { startRouteCache } from "./route-cache.ts";
+import { createDigitransitClient } from "./digitransit-client.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 3000);
@@ -17,6 +19,15 @@ const app = express();
 app.use(express.static(join(__dirname, "..", "public")));
 
 startSseServer({ app, state });
+
+const apiKey = process.env.DIGITRANSIT_API_KEY;
+if (!apiKey) {
+  console.warn("[route-cache] DIGITRANSIT_API_KEY not set — route overlays disabled");
+}
+startRouteCache({
+  app,
+  digitransit: apiKey ? createDigitransitClient(apiKey) : null,
+});
 
 startMqttClient({
   state,

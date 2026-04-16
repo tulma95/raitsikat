@@ -21,6 +21,14 @@ const markers = new Map();
 const vehiclesById = new Map();
 const enabledLines = new Set();
 let allLinesEnabledByDefault = true;
+// Currently-displayed route polyline. `currentPathKey` is `${routeId}/${dirId}`
+// or null when nothing is shown. Tied to line-isolation state — see isolateLine().
+// `routeRequestId` is bumped by every showRoute()/clearRoute() so an in-flight
+// fetch from an earlier click can't draw a ghost route after the user has
+// moved on (clicked another tram, hit Hide all, toggled a chip).
+let currentPath = null;
+let currentPathKey = null;
+let routeRequestId = 0;
 
 // --- Smooth position animation ---
 //
@@ -108,6 +116,7 @@ toggleAllBtn.addEventListener("click", () => {
       enabledLines.add(chip.getAttribute("data-line"));
     }
   }
+  clearRoute();
   refreshToggleAllLabel();
   refreshVisibility();
   updateCount();
@@ -118,9 +127,10 @@ function refreshToggleAllLabel() {
   toggleAllBtn.textContent = anyVisible ? "Hide all" : "Show all";
 }
 
-// Click a tram → show only that line. Click a tram of the same (isolated)
-// line → reset to show everything.
-function isolateLine(line) {
+// Click a tram → show only that line and draw its route. Click a tram of the
+// same (already isolated) line → reset to show everything and clear the route.
+function isolateLine(vehicle) {
+  const line = vehicle.line;
   const alreadyIsolated =
     !allLinesEnabledByDefault &&
     enabledLines.size === 1 &&
@@ -134,6 +144,7 @@ function isolateLine(line) {
       chip.querySelector("input").checked = true;
       enabledLines.add(l);
     }
+    clearRoute();
   } else {
     allLinesEnabledByDefault = false;
     enabledLines.clear();
@@ -143,10 +154,90 @@ function isolateLine(line) {
       chip.setAttribute("data-on", String(on));
       chip.querySelector("input").checked = on;
     }
+    showRoute(vehicle.routeId, vehicle.directionId);
   }
   refreshVisibility();
   refreshToggleAllLabel();
   updateCount();
+}
+
+// Decodes Google's encoded polyline format into [lat, lon] pairs.
+// Reference: https://developers.google.com/maps/documentation/utilities/polylinealgorithm
+function decodePolyline(encoded) {
+  const points = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+  while (index < encoded.length) {
+    let result = 0;
+    let shift = 0;
+    let b;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlat = (result & 1) ? ~(result >> 1) : (result >> 1);
+    lat += dlat;
+
+    result = 0;
+    shift = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlng = (result & 1) ? ~(result >> 1) : (result >> 1);
+    lng += dlng;
+
+    points.push([lat * 1e-5, lng * 1e-5]);
+  }
+  return points;
+}
+
+async function showRoute(routeId, dirId) {
+  if (!routeId || (dirId !== 1 && dirId !== 2)) return;
+  const key = `${routeId}/${dirId}`;
+  if (currentPathKey === key) return; // already showing this exact route
+
+  // Clear any prior polyline before fetching the new one. clearRoute()
+  // bumps routeRequestId, so we capture our id *after* it.
+  clearRoute();
+  const myRequestId = ++routeRequestId;
+
+  let polyline;
+  try {
+    const res = await fetch(`/route?id=${encodeURIComponent(routeId)}&dir=${dirId}`);
+    if (!res.ok) return;
+    const body = await res.json();
+    polyline = body.polyline;
+  } catch {
+    return;
+  }
+
+  // If any other showRoute/clearRoute happened during the await, drop this result.
+  if (myRequestId !== routeRequestId) return;
+  if (!polyline) return;
+
+  const latlngs = decodePolyline(polyline);
+  if (latlngs.length === 0) return;
+  currentPath = L.polyline(latlngs, {
+    color: "#22d3b8",
+    weight: 4,
+    opacity: 0.85,
+    interactive: false,
+  }).addTo(map);
+  currentPathKey = key;
+}
+
+function clearRoute() {
+  // Invalidate any in-flight showRoute fetch.
+  routeRequestId++;
+  if (currentPath) {
+    map.removeLayer(currentPath);
+    currentPath = null;
+  }
+  currentPathKey = null;
 }
 
 function escapeAttr(v) {
@@ -205,7 +296,7 @@ function upsertVehicle(vehicle) {
   let marker = markers.get(vehicle.id);
   if (!marker) {
     marker = L.marker([vehicle.lat, vehicle.lon], { icon: makeIcon(vehicle) });
-    marker.on("click", () => isolateLine(vehiclesById.get(vehicle.id)?.line ?? vehicle.line));
+    marker.on("click", () => isolateLine(vehiclesById.get(vehicle.id) ?? vehicle));
     markers.set(vehicle.id, marker);
     if (isVisible(vehicle.line)) marker.addTo(map);
   } else {
@@ -249,6 +340,7 @@ function ensureLineChip(line) {
     if (cb.checked) enabledLines.add(line);
     else enabledLines.delete(line);
     chip.setAttribute("data-on", String(cb.checked));
+    clearRoute();
     refreshVisibility();
     refreshToggleAllLabel();
     updateCount();
