@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Raitsikat tram icon">
+  <title>Raitsikat</title>
+  <rect width="1024" height="1024" fill="#0d0f12"/>
+
+  <!-- pantograph -->
+  <g fill="none" stroke="#e8ecf1" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="420" y1="240" x2="604" y2="240"/>
+    <polyline points="420,240 478,310 546,240 604,310"/>
+    <line x1="512" y1="310" x2="512" y2="380"/>
+  </g>
+
+  <!-- tram body -->
+  <rect x="152" y="380" width="720" height="340" rx="70" ry="70" fill="#e8ecf1"/>
+
+  <!-- rear windshield (left end, angled inset) -->
+  <path d="M 270 420 L 200 420 Q 172 420 172 470 L 172 540 L 270 540 Z" fill="#0d0f12"/>
+
+  <!-- front windshield (right end, angled inset) -->
+  <path d="M 754 420 L 824 420 Q 852 420 852 470 L 852 540 L 754 540 Z" fill="#0d0f12"/>
+
+  <!-- passenger windows -->
+  <rect x="300" y="420" width="96" height="120" rx="14" ry="14" fill="#0d0f12"/>
+  <rect x="412" y="420" width="96" height="120" rx="14" ry="14" fill="#0d0f12"/>
+  <rect x="524" y="420" width="96" height="120" rx="14" ry="14" fill="#0d0f12"/>
+  <rect x="636" y="420" width="96" height="120" rx="14" ry="14" fill="#0d0f12"/>
+
+  <!-- yellow accent stripe -->
+  <rect x="172" y="590" width="680" height="14" fill="#ffd84d"/>
+
+  <!-- door seams -->
+  <line x1="300" y1="604" x2="300" y2="720" stroke="#0d0f12" stroke-width="5"/>
+  <line x1="620" y1="604" x2="620" y2="720" stroke="#0d0f12" stroke-width="5"/>
+
+  <!-- wheels -->
+  <circle cx="296" cy="760" r="44" fill="#0d0f12"/>
+  <circle cx="296" cy="760" r="22" fill="#e8ecf1"/>
+  <circle cx="728" cy="760" r="44" fill="#0d0f12"/>
+  <circle cx="728" cy="760" r="22" fill="#e8ecf1"/>
+</svg>
