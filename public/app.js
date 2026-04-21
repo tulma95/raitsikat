@@ -336,10 +336,40 @@ function ensureLineChip(line) {
   `;
   const cb = chip.querySelector("input");
   cb.addEventListener("change", () => {
-    allLinesEnabledByDefault = false;
-    if (cb.checked) enabledLines.add(line);
-    else enabledLines.delete(line);
-    chip.setAttribute("data-on", String(cb.checked));
+    const chips = filterEl.querySelectorAll(".chip");
+    // Clicking any chip while every line is shown isolates that one line,
+    // matching the tram-marker click behavior in isolateLine().
+    const everyChipOn = allLinesEnabledByDefault ||
+      Array.from(chips).every((c) => c.getAttribute("data-on") === "true");
+
+    const onlyThisOn =
+      !allLinesEnabledByDefault &&
+      enabledLines.size === 1 &&
+      enabledLines.has(line);
+
+    if (everyChipOn) {
+      allLinesEnabledByDefault = false;
+      enabledLines.clear();
+      enabledLines.add(line);
+      for (const c of chips) {
+        const on = c.getAttribute("data-line") === line;
+        c.setAttribute("data-on", String(on));
+        c.querySelector("input").checked = on;
+      }
+    } else if (!cb.checked && onlyThisOn) {
+      // Deselecting the only isolated line returns to "all selected".
+      allLinesEnabledByDefault = true;
+      for (const c of chips) {
+        c.setAttribute("data-on", "true");
+        c.querySelector("input").checked = true;
+        enabledLines.add(c.getAttribute("data-line"));
+      }
+    } else {
+      allLinesEnabledByDefault = false;
+      if (cb.checked) enabledLines.add(line);
+      else enabledLines.delete(line);
+      chip.setAttribute("data-on", String(cb.checked));
+    }
     clearRoute();
     refreshVisibility();
     refreshToggleAllLabel();
