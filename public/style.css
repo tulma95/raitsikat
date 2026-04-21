@@ -17,8 +17,6 @@
   --shadow-1: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
   --shadow-2: 0 12px 48px rgba(0,0,0,0.55);
   --radius: 14px;
-  --sheet-peek: 104px;
-  --sheet-full: min(68vh, 520px);
   --topbar-h: 72px;
 }
 
@@ -89,6 +87,9 @@ body {
 }
 .leaflet-bar a:hover { background: var(--bg-soft) !important; }
 
+/* Lift Leaflet's bottom-anchored controls clear of the chip tray on mobile */
+.leaflet-bottom { bottom: var(--sheet-height, 0px); }
+
 /* TOPBAR -------------------------------------------------------- */
 
 #topbar {
@@ -134,38 +135,13 @@ body {
   right: 0;
   bottom: 0;
   z-index: 600;
-  background: linear-gradient(180deg, rgba(26,31,38,0.96), rgba(20,23,28,0.96));
+  background: rgba(20,23,28,0.78);
   border-top: 1px solid var(--line-strong);
-  border-radius: 20px 20px 0 0;
-  box-shadow: var(--shadow-2);
-  backdrop-filter: blur(16px);
-  max-height: var(--sheet-peek);
-  transition: max-height 420ms cubic-bezier(0.22, 1, 0.36, 1);
-  overflow: hidden;
+  backdrop-filter: blur(10px);
   padding-bottom: env(safe-area-inset-bottom);
 }
-#sheet.is-open { max-height: var(--sheet-full); }
 
-#sheet-toggle {
-  all: unset;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  padding: 10px 20px 14px;
-  cursor: pointer;
-}
-
-.sheet__handle {
-  grid-column: 1 / -1;
-  justify-self: center;
-  width: 44px;
-  height: 4px;
-  border-radius: 4px;
-  background: var(--line-strong);
-  margin-bottom: 4px;
-}
+#sheet-toggle { display: none; }
 
 .sheet__title {
   font-family: var(--display);
@@ -185,43 +161,23 @@ body {
 }
 
 #sheet-body {
-  padding: 4px 20px 20px;
-  overflow-y: auto;
-  max-height: calc(var(--sheet-full) - 64px);
+  padding: 10px 14px;
 }
 
-.sheet__actions {
-  display: flex;
-  justify-content: flex-end;
-  margin: 0 0 10px;
-}
-
-.ghost-btn {
-  appearance: none;
-  background: transparent;
-  color: var(--ink-dim);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-family: var(--body);
-  font-size: 12px;
-  font-weight: 500;
+.topbar__count {
+  font-family: var(--mono);
+  font-size: 11px;
   letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
-}
-.ghost-btn:hover {
-  color: var(--ink);
-  border-color: var(--line-strong);
-}
-.ghost-btn:active {
-  background: rgba(255,255,255,0.04);
+  color: var(--ink-dim);
+  font-weight: 500;
+  font-feature-settings: "tnum" 1;
+  white-space: nowrap;
 }
 
 #line-filter {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
 }
 
@@ -270,14 +226,6 @@ body {
   opacity: 0.6;
 }
 .chip[data-on="true"] .chip__swatch { opacity: 1; }
-
-.sheet__footnote {
-  margin: 18px 0 0;
-  font-size: 11px;
-  color: var(--ink-faint);
-  letter-spacing: 0.02em;
-}
-.sheet__footnote a { color: var(--ink-dim); text-decoration: underline; text-underline-offset: 2px; }
 
 /* TRAM MARKERS -------------------------------------------------- */
 
@@ -364,12 +312,19 @@ body {
     overflow: hidden;
   }
   #sheet-toggle {
-    cursor: default;
-    padding: 28px 24px 16px;
+    all: unset;
+    display: grid;
     grid-template-columns: 1fr auto;
     align-items: baseline;
+    gap: 14px;
+    width: 100%;
+    padding: 28px 24px 16px;
+    cursor: default;
   }
   .sheet__handle { display: none; }
+  .topbar__count { display: none; }
+  /* Sheet is the left rail on desktop, no longer overlaps the map's bottom */
+  .leaflet-bottom { bottom: 0; }
   .sheet__title {
     font-size: 36px;
     font-variation-settings: "opsz" 72;
@@ -415,7 +370,6 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .tram-marker { animation: none; }
-  #sheet { transition: none; }
 }
 
 /* CONNECTION TOAST --------------------------------------------- */

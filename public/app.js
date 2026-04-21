@@ -13,7 +13,7 @@ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
   minZoom: 11,
   bounds: HELSINKI_BOUNDS,
-  attribution: '© OpenStreetMap',
+  attribution: 'Data: <a href="https://hsl.fi/en/hsl/open-data" target="_blank" rel="noopener">HSL HFP</a> · Tiles: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
 }).addTo(map);
 map.zoomControl.setPosition("bottomright");
 
@@ -87,45 +87,19 @@ function tick() {
 }
 
 const filterEl = document.getElementById("line-filter");
-const countEl = document.getElementById("tram-count");
-const sheet = document.getElementById("sheet");
-const sheetToggle = document.getElementById("sheet-toggle");
-const toggleAllBtn = document.getElementById("toggle-all");
+const countEls = document.querySelectorAll("[data-tram-count]");
 
-sheetToggle.addEventListener("click", () => {
-  const open = sheet.classList.toggle("is-open");
-  sheetToggle.setAttribute("aria-expanded", String(open));
-});
-
-toggleAllBtn.addEventListener("click", () => {
-  const anyVisible = allLinesEnabledByDefault || enabledLines.size > 0;
-  if (anyVisible) {
-    // Hide all
-    allLinesEnabledByDefault = false;
-    enabledLines.clear();
-    for (const chip of filterEl.querySelectorAll(".chip")) {
-      chip.setAttribute("data-on", "false");
-      chip.querySelector("input").checked = false;
-    }
-  } else {
-    // Show all
-    allLinesEnabledByDefault = true;
-    for (const chip of filterEl.querySelectorAll(".chip")) {
-      chip.setAttribute("data-on", "true");
-      chip.querySelector("input").checked = true;
-      enabledLines.add(chip.getAttribute("data-line"));
-    }
-  }
-  clearRoute();
-  refreshToggleAllLabel();
-  refreshVisibility();
-  updateCount();
-});
-
-function refreshToggleAllLabel() {
-  const anyVisible = allLinesEnabledByDefault || enabledLines.size > 0;
-  toggleAllBtn.textContent = anyVisible ? "Hide all" : "Show all";
-}
+// Keep Leaflet's bottom controls (zoom + attribution) clear of the chip tray
+// on mobile by exposing the tray's live height as a CSS custom property.
+const sheetEl = document.getElementById("sheet");
+const syncSheetHeight = () => {
+  document.documentElement.style.setProperty(
+    "--sheet-height",
+    `${sheetEl.offsetHeight}px`,
+  );
+};
+new ResizeObserver(syncSheetHeight).observe(sheetEl);
+syncSheetHeight();
 
 // Click a tram → show only that line and draw its route. Click a tram of the
 // same (already isolated) line → reset to show everything and clear the route.
@@ -157,7 +131,6 @@ function isolateLine(vehicle) {
     showRoute(vehicle.routeId, vehicle.directionId);
   }
   refreshVisibility();
-  refreshToggleAllLabel();
   updateCount();
 }
 
@@ -284,9 +257,10 @@ function isVisible(line) {
 function updateCount() {
   const total = vehiclesById.size;
   const shown = [...vehiclesById.values()].filter((v) => isVisible(v.line)).length;
-  countEl.textContent = allLinesEnabledByDefault
+  const text = allLinesEnabledByDefault
     ? `${total} trams`
     : `${shown} / ${total} trams`;
+  for (const el of countEls) el.textContent = text;
 }
 
 function upsertVehicle(vehicle) {
@@ -372,7 +346,6 @@ function ensureLineChip(line) {
     }
     clearRoute();
     refreshVisibility();
-    refreshToggleAllLabel();
     updateCount();
   });
   enabledLines.add(line);

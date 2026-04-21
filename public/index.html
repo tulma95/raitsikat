@@ -31,23 +31,17 @@
       <h1>Raitsikat</h1>
       <p class="brand__sub">HSL trams · live</p>
     </div>
+    <span id="tram-count-top" class="topbar__count" data-tram-count>0 trams</span>
   </header>
 
   <section id="sheet" aria-label="Tram line filter">
     <button id="sheet-toggle" aria-expanded="false" aria-controls="sheet-body">
       <span class="sheet__handle" aria-hidden="true"></span>
       <span class="sheet__title">Lines</span>
-      <span class="sheet__count" id="tram-count">0 trams</span>
+      <span class="sheet__count" id="tram-count" data-tram-count>0 trams</span>
     </button>
     <div id="sheet-body">
-      <div class="sheet__actions">
-        <button type="button" id="toggle-all" class="ghost-btn">Hide all</button>
-      </div>
       <div id="line-filter" role="group" aria-label="Show or hide tram lines"></div>
-      <p class="sheet__footnote">
-        Data: <a href="https://hsl.fi/en/hsl/open-data" target="_blank" rel="noopener">HSL HFP</a> ·
-        Tiles: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
-      </p>
     </div>
   </section>
 
