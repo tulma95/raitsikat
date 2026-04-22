@@ -21,6 +21,26 @@ const markers = new Map();
 const vehiclesById = new Map();
 const enabledLines = new Set();
 let allLinesEnabledByDefault = true;
+
+const SELECTION_STORAGE_KEY = "raitsikat.lineSelection";
+(function restoreSelection() {
+  try {
+    const raw = localStorage.getItem(SELECTION_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.allOn !== "boolean" || !Array.isArray(parsed.lines)) return;
+    allLinesEnabledByDefault = parsed.allOn;
+    if (!parsed.allOn) for (const l of parsed.lines) if (typeof l === "string") enabledLines.add(l);
+  } catch {}
+})();
+function saveSelection() {
+  try {
+    localStorage.setItem(
+      SELECTION_STORAGE_KEY,
+      JSON.stringify({ allOn: allLinesEnabledByDefault, lines: [...enabledLines] }),
+    );
+  } catch {}
+}
 // Currently-displayed route polyline. `currentPathKey` is `${routeId}/${dirId}`
 // or null when nothing is shown. Tied to line-isolation state — see isolateLine().
 // `routeRequestId` is bumped by every showRoute()/clearRoute() so an in-flight
@@ -132,6 +152,7 @@ function isolateLine(vehicle) {
   }
   refreshVisibility();
   updateCount();
+  saveSelection();
 }
 
 // Decodes Google's encoded polyline format into [lat, lon] pairs.
@@ -299,13 +320,14 @@ function removeVehicle(id) {
 function ensureLineChip(line) {
   if (filterEl.querySelector(`.chip[data-line="${CSS.escape(line)}"]`)) return;
 
+  const on = allLinesEnabledByDefault || enabledLines.has(line);
   const chip = document.createElement("label");
   chip.className = "chip";
   chip.setAttribute("data-line", line);
-  chip.setAttribute("data-on", "true");
+  chip.setAttribute("data-on", String(on));
   chip.innerHTML = `
     <span class="chip__swatch" aria-hidden="true"></span>
-    <input type="checkbox" value="${escapeAttr(line)}" checked />
+    <input type="checkbox" value="${escapeAttr(line)}" ${on ? "checked" : ""} />
     <span>${escapeAttr(line)}</span>
   `;
   const cb = chip.querySelector("input");
@@ -347,8 +369,8 @@ function ensureLineChip(line) {
     clearRoute();
     refreshVisibility();
     updateCount();
+    saveSelection();
   });
-  enabledLines.add(line);
   filterEl.appendChild(chip);
 
   // numeric-aware sort so "1, 2, 10" not "1, 10, 2"
