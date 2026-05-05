@@ -83,8 +83,8 @@ export function startRouteCache(opts: RouteCacheOptions): void {
 
   // Kick off immediately, then poll on interval. The 24h gate inside attemptRefill
   // makes most ticks no-ops; this keeps us self-healing on transient failures.
-  attemptRefill().catch(() => {});
-  const ticker = setInterval(() => { attemptRefill().catch(() => {}); }, refreshIntervalMs);
+  attemptRefill().catch((err) => console.error("[route-cache] refill threw:", err));
+  const ticker = setInterval(() => { attemptRefill().catch((err) => console.error("[route-cache] refill threw:", err)); }, refreshIntervalMs);
   ticker.unref();
 
   opts.app.get(path, async (req: Request, res: Response) => {

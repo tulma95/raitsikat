@@ -64,9 +64,8 @@ const shutdown = (signal: NodeJS.Signals) => {
     console.warn("[shutdown] forcing exit after timeout");
     process.exit(1);
   }, 10_000);
-  forceExit.unref();
 
-  sse.dispose?.();
+  sse.dispose();
   server.close((err) => {
     if (err) console.error("[shutdown] http close error:", err.message);
   });

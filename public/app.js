@@ -36,18 +36,14 @@ const SELECTION_STORAGE_KEY = "raitsikat.lineSelection";
 function saveSelection() {
   try {
     // Intersect with the chips actually rendered so retired HSL lines don't
-    // accumulate forever in localStorage. filterEl may not exist yet during
-    // the very first restore-then-save path; fall back to the raw set.
-    const rendered = filterEl
-      ? new Set(
-          Array.from(filterEl.querySelectorAll(".chip")).map((c) =>
-            c.getAttribute("data-line"),
-          ),
-        )
-      : null;
-    const lines = rendered
-      ? [...enabledLines].filter((l) => rendered.has(l))
-      : [...enabledLines];
+    // accumulate forever in localStorage. saveSelection is only called from
+    // chip handlers / isolateLine, after filterEl has been resolved.
+    const rendered = new Set(
+      Array.from(filterEl.querySelectorAll(".chip")).map((c) =>
+        c.getAttribute("data-line"),
+      ),
+    );
+    const lines = [...enabledLines].filter((l) => rendered.has(l));
     localStorage.setItem(
       SELECTION_STORAGE_KEY,
       JSON.stringify({ allOn: allLinesEnabledByDefault, lines }),
