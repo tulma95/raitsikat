@@ -45,13 +45,13 @@ export function createDigitransitClient(apiKey: string): DigitransitClient {
     },
 
     async fetchPatternGeometry(routeId, dirId) {
-      // Today in YYYYMMDD (server local time). Digitransit's `tripsForDate`
-      // uses GTFS service dates; close enough for picking the canonical pattern.
-      const t = new Date();
-      const serviceDate =
-        `${t.getFullYear()}` +
-        `${String(t.getMonth() + 1).padStart(2, "0")}` +
-        `${String(t.getDate()).padStart(2, "0")}`;
+      // Today in YYYYMMDD, anchored to Helsinki time (avoids UTC containers
+      // picking yesterday's date during 22:00–24:00 UTC). Digitransit's
+      // `tripsForDate` uses GTFS service dates; close enough for picking the
+      // canonical pattern. "sv-SE" formats as YYYY-MM-DD which we strip to
+      // YYYYMMDD.
+      const fmt = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Helsinki" });
+      const serviceDate = fmt.format(new Date()).replaceAll("-", "");
 
       const data = await gql<{
         route: {
