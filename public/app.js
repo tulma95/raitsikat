@@ -35,9 +35,22 @@ const SELECTION_STORAGE_KEY = "raitsikat.lineSelection";
 })();
 function saveSelection() {
   try {
+    // Intersect with the chips actually rendered so retired HSL lines don't
+    // accumulate forever in localStorage. filterEl may not exist yet during
+    // the very first restore-then-save path; fall back to the raw set.
+    const rendered = filterEl
+      ? new Set(
+          Array.from(filterEl.querySelectorAll(".chip")).map((c) =>
+            c.getAttribute("data-line"),
+          ),
+        )
+      : null;
+    const lines = rendered
+      ? [...enabledLines].filter((l) => rendered.has(l))
+      : [...enabledLines];
     localStorage.setItem(
       SELECTION_STORAGE_KEY,
-      JSON.stringify({ allOn: allLinesEnabledByDefault, lines: [...enabledLines] }),
+      JSON.stringify({ allOn: allLinesEnabledByDefault, lines }),
     );
   } catch {}
 }
@@ -213,7 +226,16 @@ async function showRoute(routeId, dirId) {
   if (myRequestId !== routeRequestId) return;
   if (!polyline) return;
 
-  const latlngs = decodePolyline(polyline);
+  let latlngs;
+  try {
+    latlngs = decodePolyline(polyline);
+  } catch (err) {
+    // decodePolyline silently produces a garbage final coord on truncated
+    // input rather than throwing — surface anything that does throw so
+    // backend bugs don't quietly draw a malformed polyline.
+    console.warn("decodePolyline failed", err);
+    return;
+  }
   if (latlngs.length === 0) return;
   currentPath = L.polyline(latlngs, {
     color: "#22d3b8",
@@ -343,6 +365,9 @@ function ensureLineChip(line) {
       enabledLines.size === 1 &&
       enabledLines.has(line);
 
+    // Default: any chip change clears the route. The isolation branch below
+    // re-draws it so the chip path matches the tram-marker click behavior.
+    clearRoute();
     if (everyChipOn) {
       allLinesEnabledByDefault = false;
       enabledLines.clear();
@@ -352,6 +377,10 @@ function ensureLineChip(line) {
         c.setAttribute("data-on", String(on));
         c.querySelector("input").checked = on;
       }
+      // Match tram-marker click: draw the isolated line's route if we have
+      // a vehicle currently on it. If not, leave the route cleared.
+      const sample = [...vehiclesById.values()].find((v) => v.line === line);
+      if (sample) showRoute(sample.routeId, sample.directionId);
     } else if (!cb.checked && onlyThisOn) {
       // Deselecting the only isolated line returns to "all selected".
       allLinesEnabledByDefault = true;
@@ -366,7 +395,6 @@ function ensureLineChip(line) {
       else enabledLines.delete(line);
       chip.setAttribute("data-on", String(cb.checked));
     }
-    clearRoute();
     refreshVisibility();
     updateCount();
     saveSelection();
@@ -400,6 +428,10 @@ function trackConnection(es) {
   const label = el.querySelector(".conn-toast__label");
   let graceTimer = null;
   let escalateTimer = null;
+  // Once we've shown "offline", stay there until the next successful open —
+  // otherwise repeated `error` events would bounce the toast between
+  // "reconnecting" and "offline" while still disconnected.
+  let escalated = false;
 
   const clearTimers = () => {
     if (graceTimer) { clearTimeout(graceTimer); graceTimer = null; }
@@ -416,17 +448,19 @@ function trackConnection(es) {
   };
 
   es.addEventListener("open", () => {
+    escalated = false;
     clearTimers();
     hide();
   });
   es.addEventListener("error", () => {
     // EventSource will reconnect automatically. Show UI only after 2s.
-    if (graceTimer || escalateTimer) return;
+    if (escalated || graceTimer || escalateTimer) return;
     graceTimer = setTimeout(() => {
       graceTimer = null;
       show("reconnecting", "Reconnecting to tram feed…");
       escalateTimer = setTimeout(() => {
         escalateTimer = null;
+        escalated = true;
         show("offline", "Offline — waiting for connection");
       }, 30_000);
     }, 2_000);
