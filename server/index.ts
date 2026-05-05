@@ -5,6 +5,7 @@ import { createState } from "./state.ts";
 import { startMqttClient } from "./mqtt-client.ts";
 import { startSseServer } from "./sse-server.ts";
 import { startRouteCache } from "./route-cache.ts";
+import { startStopCache } from "./stop-cache.ts";
 import { createDigitransitClient } from "./digitransit-client.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -23,12 +24,11 @@ const sse = startSseServer({ app, state });
 
 const apiKey = process.env.DIGITRANSIT_API_KEY;
 if (!apiKey) {
-  console.warn("[route-cache] DIGITRANSIT_API_KEY not set — route overlays disabled");
+  console.warn("[digitransit] DIGITRANSIT_API_KEY not set — route overlays and stops disabled");
 }
-startRouteCache({
-  app,
-  digitransit: apiKey ? createDigitransitClient(apiKey) : null,
-});
+const digitransit = apiKey ? createDigitransitClient(apiKey) : null;
+startRouteCache({ app, digitransit });
+startStopCache({ app, digitransit });
 
 const mqttClient = startMqttClient({
   state,

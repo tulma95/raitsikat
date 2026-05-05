@@ -17,6 +17,12 @@ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
 }).addTo(map);
 map.zoomControl.setPosition("bottomright");
 
+// Stops live in their own pane between tiles (200) and the route polyline
+// (overlayPane, 400) so they read as map furniture, not interactive markers.
+map.createPane("stopsPane");
+map.getPane("stopsPane").style.zIndex = 350;
+const stopsLayer = L.layerGroup();
+
 const markers = new Map();
 const vehiclesById = new Map();
 const enabledLines = new Set();
@@ -489,5 +495,171 @@ function connect() {
   });
   return es;
 }
+
+// --- Stop layer + on-click departures ---------------------------
+//
+// /stops is fetched once at startup. Each stop becomes a small circle marker
+// in `stopsPane`. The layer is attached only at zoom >= 14 so the dots don't
+// clutter the city-wide view. Clicking a stop opens a popup that fetches
+// /departures?id=<id> on every open. Stop interactions are independent of
+// the chip filter / line-isolation state.
+
+function formatDeparture(departureAt) {
+  const ms = departureAt - Date.now();
+  if (ms < -30_000) return "—";
+  if (ms < 30_000) return "now";
+  return `in ${Math.round(ms / 60_000)} min`;
+}
+
+function syncStopLayer() {
+  const shouldShow = map.getZoom() >= 14;
+  if (shouldShow && !map.hasLayer(stopsLayer)) stopsLayer.addTo(map);
+  if (!shouldShow && map.hasLayer(stopsLayer)) map.removeLayer(stopsLayer);
+}
+map.on("zoomend", syncStopLayer);
+
+function buildStopPopupRoot(stop) {
+  const root = document.createElement("div");
+  root.className = "tram-stop-popup";
+
+  const name = document.createElement("div");
+  name.className = "tram-stop-popup__name";
+  name.textContent = stop.name || "Unknown stop";
+  root.appendChild(name);
+
+  if (stop.code) {
+    const code = document.createElement("div");
+    code.className = "tram-stop-popup__code";
+    code.textContent = stop.code;
+    root.appendChild(code);
+  }
+
+  const list = document.createElement("div");
+  list.className = "tram-stop-popup__list";
+  root.appendChild(list);
+
+  return { root, list };
+}
+
+function renderPlaceholder(list, text) {
+  list.replaceChildren();
+  const placeholder = document.createElement("div");
+  placeholder.className = "tram-stop-popup__placeholder";
+  placeholder.textContent = text;
+  list.appendChild(placeholder);
+}
+
+// Hide departures further than this in the future. The /departures endpoint
+// returns up to 6 raw departures; we filter client-side so the user sees only
+// what's actually catchable in the next quarter-hour.
+const DEPARTURE_HORIZON_MS = 15 * 60_000;
+
+function renderDepartures(list, departures) {
+  list.replaceChildren();
+  const now = Date.now();
+  const visible = (departures ?? []).filter((d) => {
+    const ms = Number(d.departureAt) - now;
+    // Keep "now" and short-future; drop anything past 15 min and anything
+    // already meaningfully in the past (defensive clock-skew window: 30s).
+    return ms >= -30_000 && ms <= DEPARTURE_HORIZON_MS;
+  });
+  if (visible.length === 0) {
+    renderPlaceholder(list, "No departures");
+    return;
+  }
+  for (const d of visible.slice(0, 6)) {
+    const row = document.createElement("div");
+    row.className = "tram-stop-popup__row";
+
+    const line = document.createElement("span");
+    line.className = "tram-stop-popup__line";
+    line.textContent = d.line ?? "";
+    row.appendChild(line);
+
+    const time = document.createElement("span");
+    time.className = "tram-stop-popup__time";
+    time.textContent = formatDeparture(Number(d.departureAt));
+    row.appendChild(time);
+
+    list.appendChild(row);
+  }
+}
+
+function buildStopMarker(stop) {
+  // Cream fill + dark ring reads as "transit stop" against both the dark
+  // toned tiles and any lighter regions (parks, water labels). Small enough
+  // to stay visual furniture; the ring keeps it legible at any zoom.
+  const marker = L.circleMarker([stop.lat, stop.lon], {
+    pane: "stopsPane",
+    radius: 4,
+    weight: 1.5,
+    color: "#0d0f12",
+    fillColor: "#ecece6",
+    fillOpacity: 1,
+  });
+
+  // Per-marker request id so a slow /departures response can't overwrite a
+  // newer one (e.g. user reopens the popup quickly).
+  let requestId = 0;
+
+  marker.bindPopup(
+    () => {
+      const { root } = buildStopPopupRoot(stop);
+      return root;
+    },
+    {
+      className: "tram-stop-popup-wrap",
+      autoPan: true,
+      closeButton: true,
+      maxWidth: 240,
+      minWidth: 0,
+      // Tip anchors to the marker. Leaflet's default [0, 7] leaves a visible
+      // gap between the arrow and the small circleMarker; zero it out.
+      offset: [0, 0],
+    },
+  );
+
+  marker.on("popupopen", (ev) => {
+    const popupEl = ev.popup.getElement();
+    if (!popupEl) return;
+    const list = popupEl.querySelector(".tram-stop-popup__list");
+    if (!list) return;
+
+    renderPlaceholder(list, "Loading…");
+    const myId = ++requestId;
+
+    fetch(`/departures?id=${encodeURIComponent(stop.id)}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((departures) => {
+        if (myId !== requestId) return; // a newer open superseded us
+        renderDepartures(list, Array.isArray(departures) ? departures : []);
+      })
+      .catch(() => {
+        if (myId !== requestId) return;
+        renderPlaceholder(list, "No departures");
+      });
+  });
+
+  return marker;
+}
+
+fetch("/stops")
+  .then((res) => (res.ok ? res.json() : []))
+  .then((stops) => {
+    if (!Array.isArray(stops) || stops.length === 0) return;
+    for (const stop of stops) {
+      if (
+        !stop ||
+        typeof stop.id !== "string" ||
+        typeof stop.lat !== "number" ||
+        typeof stop.lon !== "number"
+      ) continue;
+      buildStopMarker(stop).addTo(stopsLayer);
+    }
+    syncStopLayer();
+  })
+  .catch(() => {
+    // /stops is best-effort — silently absent on failure.
+  });
 
 connect();

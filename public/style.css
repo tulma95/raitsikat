@@ -439,3 +439,89 @@ body {
   #conn-toast { transition: none; }
   .conn-toast__dot { animation: none; }
 }
+
+/* TRAM STOP POPUP ---------------------------------------------- */
+
+.leaflet-popup.tram-stop-popup-wrap .leaflet-popup-content-wrapper {
+  background: rgba(20, 23, 28, 0.92);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-1);
+  backdrop-filter: blur(8px);
+  font-family: var(--body);
+  padding: 0;
+}
+.leaflet-popup.tram-stop-popup-wrap .leaflet-popup-content {
+  margin: 8px 12px;
+  font-size: 12px;
+  line-height: 1.35;
+  width: auto !important;
+}
+.leaflet-popup.tram-stop-popup-wrap .leaflet-popup-tip {
+  background: rgba(20, 23, 28, 0.92);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+.leaflet-popup.tram-stop-popup-wrap .leaflet-popup-close-button {
+  color: var(--ink-faint) !important;
+  font-size: 14px;
+  padding: 4px 6px 0 0;
+}
+.leaflet-popup.tram-stop-popup-wrap .leaflet-popup-close-button:hover {
+  color: var(--ink-dim) !important;
+}
+
+.tram-stop-popup__name {
+  font-family: var(--display);
+  font-weight: 600;
+  font-variation-settings: "opsz" 24;
+  font-size: 13px;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+  line-height: 1.2;
+  padding-right: 14px; /* clear of close-button hit area */
+  white-space: nowrap;
+}
+.tram-stop-popup__code {
+  margin-top: 1px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+}
+.tram-stop-popup__list {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  /* Reserve room so the popup width doesn't visibly shift between the
+     "Loading…" placeholder and the rendered departure rows. ~13ch fits
+     "in 99 min" + line column comfortably. */
+  min-width: 13ch;
+}
+.tram-stop-popup__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-feature-settings: "tnum" 1;
+  white-space: nowrap;
+}
+.tram-stop-popup__line {
+  flex: 0 0 22px;
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.tram-stop-popup__time {
+  color: var(--ink-dim);
+}
+.tram-stop-popup__placeholder {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  font-style: italic;
+}
