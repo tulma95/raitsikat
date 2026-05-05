@@ -21,6 +21,9 @@ export function startRouteCache(opts: RouteCacheOptions): void {
   // The HFP feed often reports operational variant ids ("HSL:1004H6", "HSL:100HA5")
   // that aren't in GTFS; we normalize those to the longest known prefix.
   const knownRouteIds = new Set<string>();
+  // Coalesce concurrent identical lazy lookups so N parallel cache-miss requests
+  // for the same route hit Digitransit only once.
+  const inFlightLookups = new Map<string, Promise<string | null>>();
   let lastSuccessAt = 0;
 
   const key = (routeId: string, dirId: 1 | 2) => `${routeId}/${dirId}`;
@@ -34,47 +37,54 @@ export function startRouteCache(opts: RouteCacheOptions): void {
     return best || id; // empty knownRouteIds (pre-warmup) → fall back to original
   }
 
+  let inFlight = false;
   async function attemptRefill(): Promise<void> {
-    if (!opts.digitransit) return;
-    if (now() - lastSuccessAt < refreshGateMs) return;
-
-    let allOk = true;
-    let updated = 0;
+    if (inFlight) return;
+    inFlight = true;
     try {
-      const routes = await opts.digitransit.listTramRoutes();
-      knownRouteIds.clear();
-      for (const r of routes) knownRouteIds.add(r.id);
-      for (const route of routes) {
-        for (const dir of [1, 2] as const) {
-          try {
-            const poly = await opts.digitransit.fetchPatternGeometry(route.id, dir);
-            if (poly) {
-              cache.set(key(route.id, dir), poly);
-              updated++;
+      if (!opts.digitransit) return;
+      if (now() - lastSuccessAt < refreshGateMs) return;
+
+      let allOk = true;
+      let updated = 0;
+      try {
+        const routes = await opts.digitransit.listTramRoutes();
+        knownRouteIds.clear();
+        for (const r of routes) knownRouteIds.add(r.id);
+        for (const route of routes) {
+          for (const dir of [1, 2] as const) {
+            try {
+              const poly = await opts.digitransit.fetchPatternGeometry(route.id, dir);
+              if (poly) {
+                cache.set(key(route.id, dir), poly);
+                updated++;
+              }
+            } catch (err) {
+              allOk = false;
+              console.error(`[route-cache] pattern fetch failed for ${route.id}/${dir}:`, (err as Error).message);
             }
-          } catch (err) {
-            allOk = false;
-            console.error(`[route-cache] pattern fetch failed for ${route.id}/${dir}:`, (err as Error).message);
           }
         }
+      } catch (err) {
+        allOk = false;
+        console.error("[route-cache] route list fetch failed:", (err as Error).message);
       }
-    } catch (err) {
-      allOk = false;
-      console.error("[route-cache] route list fetch failed:", (err as Error).message);
-    }
 
-    if (allOk) {
-      lastSuccessAt = now();
-      console.log(`[route-cache] refreshed ${updated} patterns; cache size = ${cache.size}`);
-    } else {
-      console.warn(`[route-cache] partial refresh: updated ${updated} patterns, will retry in ${refreshIntervalMs / 1000}s`);
+      if (allOk) {
+        lastSuccessAt = now();
+        console.log(`[route-cache] refreshed ${updated} patterns; cache size = ${cache.size}`);
+      } else {
+        console.warn(`[route-cache] partial refresh: updated ${updated} patterns, will retry in ${refreshIntervalMs / 1000}s`);
+      }
+    } finally {
+      inFlight = false;
     }
   }
 
   // Kick off immediately, then poll on interval. The 24h gate inside attemptRefill
   // makes most ticks no-ops; this keeps us self-healing on transient failures.
-  attemptRefill();
-  const ticker = setInterval(attemptRefill, refreshIntervalMs);
+  attemptRefill().catch(() => {});
+  const ticker = setInterval(() => { attemptRefill().catch(() => {}); }, refreshIntervalMs);
   ticker.unref();
 
   opts.app.get(path, async (req: Request, res: Response) => {
@@ -102,10 +112,32 @@ export function startRouteCache(opts: RouteCacheOptions): void {
       return;
     }
 
+    // Only allow lazy Digitransit calls for routes we've published via warmup.
+    // Without this gate, an attacker could spam arbitrary ids and burn quota.
+    if (!knownRouteIds.has(lookupId)) {
+      res.json({ polyline: null });
+      return;
+    }
+
+    const lookupKey = key(lookupId, dirId);
+    let pending = inFlightLookups.get(lookupKey);
+    if (!pending) {
+      const digitransit = opts.digitransit;
+      pending = (async () => {
+        try {
+          const poly = await digitransit.fetchPatternGeometry(lookupId, dirId);
+          if (poly) cache.set(lookupKey, poly);
+          return poly ?? null;
+        } finally {
+          inFlightLookups.delete(lookupKey);
+        }
+      })();
+      inFlightLookups.set(lookupKey, pending);
+    }
+
     try {
-      const poly = await opts.digitransit.fetchPatternGeometry(lookupId, dirId);
-      if (poly) cache.set(key(lookupId, dirId), poly);
-      res.json({ polyline: poly ?? null });
+      const poly = await pending;
+      res.json({ polyline: poly });
     } catch (err) {
       console.error(`[route-cache] lazy fetch failed for ${lookupId}/${dirId}:`, (err as Error).message);
       res.json({ polyline: null });
