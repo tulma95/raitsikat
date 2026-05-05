@@ -10,6 +10,13 @@ export interface MqttClientOptions {
   onError?: (err: Error) => void;
 }
 
+export interface MqttClientHandle {
+  client: mqtt.MqttClient;
+  readonly connected: boolean;
+  readonly lastMessageAt: number | null;
+  end: () => Promise<void>;
+}
+
 interface HfpPayload {
   VP?: {
     desi?: string;
@@ -21,11 +28,12 @@ interface HfpPayload {
   };
 }
 
-export function startMqttClient(opts: MqttClientOptions): mqtt.MqttClient {
+export function startMqttClient(opts: MqttClientOptions): MqttClientHandle {
   const url = opts.url ?? "mqtts://mqtt.hsl.fi:8883";
   const topic = opts.topic ?? "/hfp/v2/journey/ongoing/vp/tram/#";
 
   const client = mqtt.connect(url, { reconnectPeriod: 2000 });
+  let lastMessageAt: number | null = null;
 
   client.on("connect", () => {
     client.subscribe(topic, (err) => {
@@ -37,11 +45,24 @@ export function startMqttClient(opts: MqttClientOptions): mqtt.MqttClient {
   client.on("error", (err) => opts.onError?.(err));
 
   client.on("message", (topic, payload) => {
+    lastMessageAt = Date.now();
     const vehicle = parseMessage(topic, payload);
     if (vehicle) opts.state.upsert(vehicle);
   });
 
-  return client;
+  return {
+    client,
+    get connected() {
+      return client.connected;
+    },
+    get lastMessageAt() {
+      return lastMessageAt;
+    },
+    end: () =>
+      new Promise<void>((resolve) => {
+        client.end(false, {}, () => resolve());
+      }),
+  };
 }
 
 export function parseMessage(topic: string, payload: Buffer): Vehicle | null {
@@ -55,6 +76,7 @@ export function parseMessage(topic: string, payload: Buffer): Vehicle | null {
   const rawRouteId = parts[9];
   const rawDir = parts[10];
   if (!rawRouteId) return null;
+  if (!/^\d/.test(rawRouteId)) return null;
   if (rawDir !== "1" && rawDir !== "2") return null;
 
   let data: HfpPayload;
@@ -68,6 +90,7 @@ export function parseMessage(topic: string, payload: Buffer): Vehicle | null {
   if (typeof vp.lat !== "number" || typeof vp.long !== "number") return null;
   if (typeof vp.oper !== "number" || typeof vp.veh !== "number") return null;
   if (typeof vp.desi !== "string") return null;
+  if (typeof vp.hdg !== "number") return null;
 
   return {
     id: `${vp.oper}/${vp.veh}`,
@@ -76,7 +99,7 @@ export function parseMessage(topic: string, payload: Buffer): Vehicle | null {
     directionId: rawDir === "1" ? 1 : 2,
     lat: vp.lat,
     lon: vp.long,
-    heading: typeof vp.hdg === "number" ? vp.hdg : 0,
+    heading: vp.hdg,
     updatedAt: Date.now(),
   };
 }
