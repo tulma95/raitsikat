@@ -7,26 +7,24 @@ import { startSseServer } from "./sse-server.ts";
 import { startRouteCache } from "./route-cache.ts";
 import { startStopCache } from "./stop-cache.ts";
 import { createDigitransitClient } from "./digitransit-client.ts";
+import { settings } from "./settings.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.PORT ?? 3000);
-const EVICT_MS = 60_000;
-const EVICT_INTERVAL_MS = 10_000;
-const MQTT_LIVENESS_MS = 60_000;
 
-const state = createState({ evictAfterMs: EVICT_MS });
-setInterval(() => state.evict(), EVICT_INTERVAL_MS).unref();
+const state = createState({ evictAfterMs: settings.evictMs });
+setInterval(() => state.evict(), settings.evictIntervalMs).unref();
 
 const app = express();
 app.use(express.static(join(__dirname, "..", "public")));
 
 const sse = startSseServer({ app, state });
 
-const apiKey = process.env.DIGITRANSIT_API_KEY;
-if (!apiKey) {
+if (!settings.digitransitApiKey) {
   console.warn("[digitransit] DIGITRANSIT_API_KEY not set — route overlays and stops disabled");
 }
-const digitransit = apiKey ? createDigitransitClient(apiKey) : null;
+const digitransit = settings.digitransitApiKey
+  ? createDigitransitClient(settings.digitransitApiKey)
+  : null;
 startRouteCache({ app, digitransit });
 startStopCache({ app, digitransit });
 
@@ -42,7 +40,7 @@ app.get("/healthz", (_req, res) => {
   const fresh =
     mqttClient.connected &&
     lastMessageAt !== null &&
-    Date.now() - lastMessageAt < MQTT_LIVENESS_MS;
+    Date.now() - lastMessageAt < settings.mqttLivenessMs;
   res.status(fresh ? 200 : 503).json({
     mqttConnected: mqttClient.connected,
     vehicleCount: state.snapshot().length,
@@ -50,8 +48,8 @@ app.get("/healthz", (_req, res) => {
   });
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`[http] listening on http://localhost:${PORT}`);
+const server = app.listen(settings.port, () => {
+  console.log(`[http] listening on http://localhost:${settings.port}`);
 });
 
 let shuttingDown = false;
