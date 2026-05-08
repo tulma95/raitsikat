@@ -16,6 +16,12 @@ setInterval(() => state.evict(), settings.evictIntervalMs).unref();
 
 const app = express();
 app.use(express.static(join(__dirname, "..", "public")));
+app.use(
+  "/vendor/leaflet",
+  express.static(join(__dirname, "..", "node_modules", "leaflet", "dist"), {
+    maxAge: "1d",
+  }),
+);
 
 const sse = startSseServer({ app, state });
 
