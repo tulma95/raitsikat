@@ -11,8 +11,8 @@ export interface StopCacheOptions {
   now?: () => number;
 }
 
-// Public shape of a departure as returned by /departures. We strip the
-// server-side `headsign` before sending so the wire payload matches the spec.
+// `headsign` is server-only metadata; strip before sending so the wire payload
+// matches the spec.
 type DeparturePayload = Pick<StopDeparture, "line" | "departureAt">;
 
 export function startStopCache(opts: StopCacheOptions): void {
@@ -22,25 +22,28 @@ export function startStopCache(opts: StopCacheOptions): void {
   const refreshGateMs = opts.refreshGateMs ?? 24 * 60 * 60 * 1000;
   const now = opts.now ?? Date.now;
 
-  let stops: TramStop[] = [];
-  const knownStopIds = new Set<string>();
+  // Single source of truth — serves both the /stops list (via cached JSON) and
+  // the /departures known-id gate (via .has()).
+  const stopsById = new Map<string, TramStop>();
+  // /stops is hit on every page load with a payload that changes at most once
+  // a day. Cache the serialized body so we skip JSON.stringify per request.
+  let stopsJson = "[]";
   // Coalesce concurrent identical lazy lookups for the same stop's departures.
   const inFlightLookups = new Map<string, Promise<DeparturePayload[]>>();
   let lastSuccessAt = 0;
 
-  let inFlight = false;
-  async function attemptRefill(): Promise<void> {
-    if (inFlight) return;
-    inFlight = true;
-    try {
-      if (!opts.digitransit) return;
+  if (opts.digitransit) {
+    const digitransit = opts.digitransit;
+    let inFlight = false;
+    const attemptRefill = async (): Promise<void> => {
+      if (inFlight) return;
       if (now() - lastSuccessAt < refreshGateMs) return;
-
+      inFlight = true;
       try {
-        const fetched = await opts.digitransit.listTramStops();
-        stops = fetched;
-        knownStopIds.clear();
-        for (const s of fetched) knownStopIds.add(s.id);
+        const fetched = await digitransit.listTramStops();
+        stopsById.clear();
+        for (const s of fetched) stopsById.set(s.id, s);
+        stopsJson = JSON.stringify(fetched);
         lastSuccessAt = now();
         console.log(`[stop-cache] refreshed ${fetched.length} stops`);
       } catch (err) {
@@ -48,20 +51,20 @@ export function startStopCache(opts: StopCacheOptions): void {
           `[stop-cache] stop list fetch failed (will retry in ${refreshIntervalMs / 1000}s):`,
           (err as Error).message,
         );
+      } finally {
+        inFlight = false;
       }
-    } finally {
-      inFlight = false;
-    }
+    };
+
+    attemptRefill().catch((err) => console.error("[stop-cache] refill threw:", err));
+    const ticker = setInterval(() => {
+      attemptRefill().catch((err) => console.error("[stop-cache] refill threw:", err));
+    }, refreshIntervalMs);
+    ticker.unref();
   }
 
-  attemptRefill().catch((err) => console.error("[stop-cache] refill threw:", err));
-  const ticker = setInterval(() => {
-    attemptRefill().catch((err) => console.error("[stop-cache] refill threw:", err));
-  }, refreshIntervalMs);
-  ticker.unref();
-
   opts.app.get(stopsPath, (_req: Request, res: Response) => {
-    res.json(stops);
+    res.type("application/json").send(stopsJson);
   });
 
   opts.app.get(departuresPath, async (req: Request, res: Response) => {
@@ -79,7 +82,7 @@ export function startStopCache(opts: StopCacheOptions): void {
     // Mirrors the route-cache known-id gate: only allow Digitransit calls for
     // stops we've published via warmup so an attacker can't burn quota with
     // arbitrary ids. Also covers the "stop list hasn't loaded yet" case.
-    if (!knownStopIds.has(stopId)) {
+    if (!stopsById.has(stopId)) {
       res.json([]);
       return;
     }
@@ -90,7 +93,7 @@ export function startStopCache(opts: StopCacheOptions): void {
       pending = (async () => {
         try {
           const departures = await digitransit.fetchStopDepartures(stopId);
-          // Drop server-only fields (e.g. headsign) before exposing.
+          // strip headsign — server-only metadata, see DeparturePayload
           return departures.map((d) => ({ line: d.line, departureAt: d.departureAt }));
         } finally {
           inFlightLookups.delete(stopId);

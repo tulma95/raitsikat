@@ -504,8 +504,8 @@ function connect() {
 // /departures?id=<id> on every open. Stop interactions are independent of
 // the chip filter / line-isolation state.
 
-function formatDeparture(departureAt) {
-  const ms = departureAt - Date.now();
+function formatDeparture(departureAt, now) {
+  const ms = departureAt - now;
   if (ms < -30_000) return "—";
   if (ms < 30_000) return "now";
   return `in ${Math.round(ms / 60_000)} min`;
@@ -538,7 +538,7 @@ function buildStopPopupRoot(stop) {
   list.className = "tram-stop-popup__list";
   root.appendChild(list);
 
-  return { root, list };
+  return root;
 }
 
 function renderPlaceholder(list, text) {
@@ -549,9 +549,9 @@ function renderPlaceholder(list, text) {
   list.appendChild(placeholder);
 }
 
-// Hide departures further than this in the future. The /departures endpoint
-// returns up to 6 raw departures; we filter client-side so the user sees only
-// what's actually catchable in the next quarter-hour.
+// Hide departures further than this in the future. The popup's row count is
+// bounded server-side (numberOfDepartures: 6 in digitransit-client.ts); the
+// client only narrows by this horizon so the user sees catchable trips.
 const DEPARTURE_HORIZON_MS = 15 * 60_000;
 
 function renderDepartures(list, departures) {
@@ -567,7 +567,7 @@ function renderDepartures(list, departures) {
     renderPlaceholder(list, "No departures");
     return;
   }
-  for (const d of visible.slice(0, 6)) {
+  for (const d of visible) {
     const row = document.createElement("div");
     row.className = "tram-stop-popup__row";
 
@@ -578,7 +578,7 @@ function renderDepartures(list, departures) {
 
     const time = document.createElement("span");
     time.className = "tram-stop-popup__time";
-    time.textContent = formatDeparture(Number(d.departureAt));
+    time.textContent = formatDeparture(Number(d.departureAt), now);
     row.appendChild(time);
 
     list.appendChild(row);
@@ -603,10 +603,7 @@ function buildStopMarker(stop) {
   let requestId = 0;
 
   marker.bindPopup(
-    () => {
-      const { root } = buildStopPopupRoot(stop);
-      return root;
-    },
+    () => buildStopPopupRoot(stop),
     {
       className: "tram-stop-popup-wrap",
       autoPan: true,
