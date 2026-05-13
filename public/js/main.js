@@ -8,6 +8,7 @@ import { activeMode, setActiveMode } from "./mode.js";
 import { saveAndClear, reloadForActiveMode } from "./filter.js";
 import { clearAll as clearVehicles } from "./vehicles.js";
 import { clearRoute } from "./route-overlay.js";
+import { initUserLocation } from "./location.js";
 
 // Keep Leaflet's bottom controls (zoom + attribution) clear of the chip tray
 // on mobile by exposing the tray's live height as a CSS custom property.
@@ -59,3 +60,4 @@ modeTabsEl.addEventListener("click", (ev) => {
 
 syncTabUi();
 startForActiveMode();
+initUserLocation();
