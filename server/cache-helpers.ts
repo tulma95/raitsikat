@@ -21,6 +21,14 @@ export interface RefillSchedulerHandle {
 }
 
 export function startRefillScheduler(opts: RefillSchedulerOptions): RefillSchedulerHandle {
+  // intervalMs >= gateMs would freeze the scheduler: the first tick advances
+  // lastSuccessAt, and every later tick falls inside the gate forever. Reject
+  // the configuration up front rather than silently going quiet.
+  if (opts.intervalMs >= opts.gateMs) {
+    throw new Error(
+      `[${opts.label}] intervalMs (${opts.intervalMs}) must be < gateMs (${opts.gateMs})`,
+    );
+  }
   const now = opts.now ?? Date.now;
   let lastSuccessAt = 0;
   let inFlight = false;
