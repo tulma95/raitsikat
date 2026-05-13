@@ -1,11 +1,18 @@
+import type { Mode } from "./types.ts";
+
 const ENDPOINT = "https://api.digitransit.fi/routing/v2/hsl/gtfs/v1";
 
-export interface TramRoute {
+const MODE_TO_GTFS: Record<Mode, "TRAM" | "BUS"> = {
+  tram: "TRAM",
+  bus: "BUS",
+};
+
+export interface Route {
   id: string;        // e.g. "HSL:1004"
-  shortName: string; // e.g. "4"
+  shortName: string; // e.g. "4", "550"
 }
 
-export interface TramStop {
+export interface Stop {
   id: string;   // e.g. "HSL:1234567"
   name: string;
   lat: number;
@@ -20,10 +27,10 @@ export interface StopDeparture {
 }
 
 export interface DigitransitClient {
-  listTramRoutes(): Promise<TramRoute[]>;
+  listRoutes(mode: Mode): Promise<Route[]>;
   fetchPatternGeometry(routeId: string, dirId: 1 | 2): Promise<string | null>;
-  listTramStops(): Promise<TramStop[]>;
-  fetchStopDepartures(stopId: string): Promise<StopDeparture[]>;
+  listStops(mode: Mode): Promise<Stop[]>;
+  fetchStopDepartures(stopId: string, mode: Mode): Promise<StopDeparture[]>;
 }
 
 export function createDigitransitClient(apiKey: string): DigitransitClient {
@@ -50,9 +57,12 @@ export function createDigitransitClient(apiKey: string): DigitransitClient {
   }
 
   return {
-    async listTramRoutes() {
+    async listRoutes(mode) {
+      // GTFS modes are enum literals in the GraphQL schema; safe to inline
+      // because the value comes from a fixed map.
+      const gtfsMode = MODE_TO_GTFS[mode];
       const data = await gql<{ routes: { gtfsId: string; shortName: string }[] }>(
-        `query { routes(transportModes: [TRAM], feeds: ["HSL"]) { gtfsId shortName } }`,
+        `query { routes(transportModes: [${gtfsMode}], feeds: ["HSL"]) { gtfsId shortName } }`,
         {},
       );
       return data.routes
@@ -112,11 +122,13 @@ export function createDigitransitClient(apiKey: string): DigitransitClient {
       return candidates[0].points;
     },
 
-    async listTramStops() {
+    async listStops(mode) {
       // The v2 `stops` query does not accept `transportModes` or `feeds` args
       // (only `ids` and `name`). We fetch the full stop list and filter
-      // client-side by `vehicleMode === "TRAM"` and `gtfsId` prefix "HSL:".
-      // Result is ~360 stops out of ~8000 total — small enough to keep in mem.
+      // client-side by `vehicleMode` and `gtfsId` prefix "HSL:". Result is
+      // ~360 tram stops or ~7000 bus stops out of ~8000 total — small enough
+      // to keep in mem.
+      const gtfsMode = MODE_TO_GTFS[mode];
       const data = await gql<{
         stops: {
           gtfsId: string;
@@ -133,7 +145,7 @@ export function createDigitransitClient(apiKey: string): DigitransitClient {
       return data.stops
         .filter(
           (s) =>
-            s.vehicleMode === "TRAM" &&
+            s.vehicleMode === gtfsMode &&
             typeof s.gtfsId === "string" &&
             s.gtfsId.startsWith("HSL:") &&
             s.name &&
@@ -149,7 +161,8 @@ export function createDigitransitClient(apiKey: string): DigitransitClient {
         }));
     },
 
-    async fetchStopDepartures(stopId) {
+    async fetchStopDepartures(stopId, mode) {
+      const gtfsMode = MODE_TO_GTFS[mode];
       const data = await gql<{
         stop: {
           stoptimesWithoutPatterns: {
@@ -176,7 +189,7 @@ export function createDigitransitClient(apiKey: string): DigitransitClient {
       );
       if (!data.stop || !data.stop.stoptimesWithoutPatterns) return [];
       return data.stop.stoptimesWithoutPatterns
-        .filter((st) => st.trip?.route?.mode === "TRAM" && st.trip.route.shortName)
+        .filter((st) => st.trip?.route?.mode === gtfsMode && st.trip.route.shortName)
         .map((st) => {
           const sec = st.realtimeDeparture ?? st.scheduledDeparture;
           return {

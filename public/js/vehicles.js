@@ -94,3 +94,10 @@ export function handleSnapshot(vehicles) {
   }
   for (const v of vehicles) upsertVehicle(v);
 }
+
+// Drop every marker and clear the model. Used on mode switch — the new mode
+// brings its own snapshot, and tram + bus vehicle ids can collide so we
+// can't leave stale entries around.
+export function clearAll() {
+  for (const id of [...vehiclesById.keys()]) removeVehicle(id);
+}

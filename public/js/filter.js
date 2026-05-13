@@ -4,27 +4,41 @@
 // is the "show everything" state — when true, `enabledLines` is ignored and
 // every chip is shown as on. When false, only lines in `enabledLines` are
 // visible.
+//
+// Selection is stored per-mode in localStorage under
+// `raitsikat.lineSelection.<mode>` so flipping between trams and buses
+// preserves each side's isolations.
 
 import { filterEl, countEls } from "./dom.js";
 import { clearRoute, showRoute } from "./route-overlay.js";
 import { escapeAttr } from "./pure.js";
 import { vehiclesById, refreshVisibility } from "./vehicles.js";
+import { activeMode } from "./mode.js";
 
 export const enabledLines = new Set();
 export let allLinesEnabledByDefault = true;
 
-const SELECTION_STORAGE_KEY = "raitsikat.lineSelection";
+const SELECTION_STORAGE_PREFIX = "raitsikat.lineSelection";
+const selectionKey = (mode) => `${SELECTION_STORAGE_PREFIX}.${mode}`;
 
-(function restoreSelection() {
+function modeLabel(mode) {
+  return mode === "bus" ? "buses" : "trams";
+}
+
+function loadSelection() {
+  enabledLines.clear();
+  allLinesEnabledByDefault = true;
   try {
-    const raw = localStorage.getItem(SELECTION_STORAGE_KEY);
+    const raw = localStorage.getItem(selectionKey(activeMode));
     if (!raw) return;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed.allOn !== "boolean" || !Array.isArray(parsed.lines)) return;
     allLinesEnabledByDefault = parsed.allOn;
     if (!parsed.allOn) for (const l of parsed.lines) if (typeof l === "string") enabledLines.add(l);
   } catch {}
-})();
+}
+
+loadSelection();
 
 function saveSelection() {
   try {
@@ -37,7 +51,7 @@ function saveSelection() {
     );
     const lines = [...enabledLines].filter((l) => rendered.has(l));
     localStorage.setItem(
-      SELECTION_STORAGE_KEY,
+      selectionKey(activeMode),
       JSON.stringify({ allOn: allLinesEnabledByDefault, lines }),
     );
   } catch {}
@@ -50,8 +64,25 @@ export function isVisible(line) {
 export function updateCount() {
   const total = vehiclesById.size;
   const shown = [...vehiclesById.values()].filter((v) => isVisible(v.line)).length;
-  const text = allLinesEnabledByDefault ? `${total} trams` : `${shown} / ${total} trams`;
+  const label = modeLabel(activeMode);
+  const text = allLinesEnabledByDefault ? `${total} ${label}` : `${shown} / ${total} ${label}`;
   for (const el of countEls) el.textContent = text;
+}
+
+// Save current selection under the *current* mode's key, then drop chips and
+// in-memory selection state. main.js calls this before flipping `activeMode`.
+export function saveAndClear() {
+  saveSelection();
+  enabledLines.clear();
+  allLinesEnabledByDefault = true;
+  filterEl.replaceChildren();
+}
+
+// Load selection for whatever mode is currently active. main.js calls this
+// after flipping `activeMode`, before reconnecting SSE.
+export function reloadForActiveMode() {
+  loadSelection();
+  updateCount();
 }
 
 // Click a tram → show only that line and draw its route. Click a tram of the

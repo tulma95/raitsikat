@@ -8,6 +8,7 @@
 
 import { map, stopsLayer } from "./map.js";
 import { formatDeparture } from "./pure.js";
+import { activeMode } from "./mode.js";
 
 // Hide departures further than this in the future. The popup's row count is
 // bounded server-side (numberOfDepartures: 6 in digitransit-client.ts); the
@@ -76,7 +77,7 @@ function renderDepartures(list, departures) {
   }
 }
 
-function buildStopMarker(stop) {
+function buildStopMarker(stop, mode) {
   // Cream fill + dark ring reads as "transit stop" against both the dark
   // toned tiles and any lighter regions (parks, water labels). Small enough
   // to stay visual furniture; the ring keeps it legible at any zoom.
@@ -116,7 +117,7 @@ function buildStopMarker(stop) {
     renderPlaceholder(list, "Loading…");
     const myId = ++requestId;
 
-    fetch(`/departures?id=${encodeURIComponent(stop.id)}`)
+    fetch(`/${mode}/departures?id=${encodeURIComponent(stop.id)}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((departures) => {
         if (myId !== requestId) return; // a newer open superseded us
@@ -137,13 +138,22 @@ function syncStopLayer() {
   if (!shouldShow && map.hasLayer(stopsLayer)) map.removeLayer(stopsLayer);
 }
 
-export function initStops() {
-  map.on("zoomend", syncStopLayer);
+// If /stops responds before the server-side warmup has populated the cache,
+// the response is an empty array. Retry once after a short delay so a user
+// who lands during the cold-boot window doesn't have to refresh.
+const STOPS_RETRY_DELAY_MS = 30_000;
 
-  fetch("/stops")
+function loadStops(mode, retried) {
+  fetch(`/${mode}/stops`)
     .then((res) => (res.ok ? res.json() : []))
     .then((stops) => {
-      if (!Array.isArray(stops) || stops.length === 0) return;
+      // If the user already flipped modes during the in-flight fetch, drop
+      // these stops — they belong to a stale mode.
+      if (mode !== activeMode) return;
+      if (!Array.isArray(stops) || stops.length === 0) {
+        if (!retried) setTimeout(() => loadStops(mode, true), STOPS_RETRY_DELAY_MS);
+        return;
+      }
       for (const stop of stops) {
         if (
           !stop ||
@@ -151,11 +161,27 @@ export function initStops() {
           typeof stop.lat !== "number" ||
           typeof stop.lon !== "number"
         ) continue;
-        buildStopMarker(stop).addTo(stopsLayer);
+        buildStopMarker(stop, mode).addTo(stopsLayer);
       }
       syncStopLayer();
     })
     .catch(() => {
       // /stops is best-effort — silently absent on failure.
     });
+}
+
+// Drop every stop marker. Used on mode switch — the next initStops() pulls
+// the new mode's stop set.
+export function clearStops() {
+  stopsLayer.clearLayers();
+}
+
+let zoomHandlerInstalled = false;
+
+export function initStops() {
+  if (!zoomHandlerInstalled) {
+    map.on("zoomend", syncStopLayer);
+    zoomHandlerInstalled = true;
+  }
+  loadStops(activeMode, false);
 }

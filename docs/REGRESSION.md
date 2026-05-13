@@ -7,26 +7,31 @@ the change can't possibly touch; don't skip them because they're tedious.
 Assumes `DIGITRANSIT_API_KEY` is set. Without it, the route/stop sections
 short-circuit to `null` / `[]` and you can't verify them.
 
+Endpoints below assume mode `tram` for brevity; repeat with `bus` where the
+behavior should match.
+
 ## Boot
 
 1. `npm run typecheck` — clean.
 2. `curl -s localhost:3000/healthz | jq` within ~10s of boot:
-   - `mqttConnected: true`
-   - `vehicleCount` > 0 (Helsinki tram service hours; off-hours expect 0 and
-     `lastMqttMessageAt` slowly aging).
-   - `lastMqttMessageAt` within the last few seconds.
-3. Server log shows `[mqtt] subscribed to HSL tram feed`, `[route-cache]
-   refreshed N patterns`, `[stop-cache] refreshed N stops`. The two cache
-   lines may arrive over the first ~30s.
+   - `tram.mqttConnected: true` and `bus.mqttConnected: true`.
+   - `vehicleCount` > 0 per mode during service hours.
+   - `lastMqttMessageAt` within the last few seconds for both modes.
+3. Server log shows `[mqtt:tram] subscribed`, `[mqtt:bus] subscribed`,
+   `[route-cache:tram] refreshed N patterns`, `[stop-cache:bus] refreshed
+   N stops`, etc. Cache lines may arrive over the first ~30s; bus route
+   warmup is several hundred patterns and takes longer than tram.
 
-## SSE stream (`/events`)
+## SSE stream (`/{mode}/events`)
 
-1. `curl -N --max-time 15 localhost:3000/events | head -c 4000`:
+1. `curl -N --max-time 15 localhost:3000/tram/events | head -c 4000` and
+   the same for `/bus/events`:
    - First event is `event: snapshot` with a `vehicles` array.
-   - Followed by `event: update` events during tram hours.
+   - Followed by `event: update` events during service hours.
    - Heartbeat comment lines (`: ping`) appear every ~15s on an idle stream.
 2. Leave a browser tab open for ~2 minutes — no console errors, no SSE
-   reconnect storm. Network panel shows one `/events` connection, not many.
+   reconnect storm. Network panel shows one `/{mode}/events` connection,
+   not many.
 
 ## Map (browser, `http://localhost:3000`)
 
@@ -42,35 +47,53 @@ short-circuit to `null` / `[]` and you can't verify them.
    new one appears. No stale overlay left behind.
 6. Click the same tram again, or click empty map → overlay clears.
 
-## Route endpoint (`/route`)
+## Route endpoint (`/{mode}/route`)
 
-Pick a route id you can see in the live snapshot (e.g. `HSL:1004`).
+Pick a route id you can see in the live snapshot (e.g. `HSL:1004` for tram,
+`HSL:1075` for bus).
 
-1. `curl -s 'localhost:3000/route?id=HSL:1004&dir=1' | jq` → `{ polyline: "<non-empty string>" }`.
+1. `curl -s 'localhost:3000/tram/route?id=HSL:1004&dir=1' | jq` → `{ polyline: "<non-empty string>" }`.
 2. Same with `dir=2` → another polyline (different from `dir=1`).
-3. `curl -s 'localhost:3000/route?id=HSL:9999&dir=1' | jq` → `{ polyline: null }`. (Known-id gate.)
-4. `curl -i 'localhost:3000/route?id=HSL:1004'` → 400, `dir must be 1 or 2`.
-5. `curl -i 'localhost:3000/route?dir=1'` → 400, `missing id`.
+3. `curl -s 'localhost:3000/tram/route?id=HSL:9999&dir=1' | jq` → `{ polyline: null }`. (Known-id gate.)
+4. `curl -i 'localhost:3000/tram/route?id=HSL:1004'` → 400, `dir must be 1 or 2`.
+5. `curl -i 'localhost:3000/tram/route?dir=1'` → 400, `missing id`.
 6. HFP variant test — pick a variant id from the MQTT stream that isn't in
-   the bare GTFS list (e.g. `HSL:1004H6`). `/route?id=HSL:1004H6&dir=1`
+   the bare GTFS list (e.g. `HSL:1004H6`). `/tram/route?id=HSL:1004H6&dir=1`
    should resolve to a polyline (via the longest-known-prefix normalization
    in `route-cache.ts::normalizeRouteId`). Regression here = wrong/missing
    overlays for some lines.
+7. Repeat 1–3 against `/bus/route` with a live bus route id from
+   `/bus/events`.
 
 ## Stops + departures
 
-1. `curl -s localhost:3000/stops | jq 'length'` → > 0 (a few hundred).
-2. `curl -s localhost:3000/stops | jq '.[0]'` — entry has `id` starting
+1. `curl -s localhost:3000/tram/stops | jq 'length'` → ~350 tram stops.
+   `curl -s localhost:3000/bus/stops | jq 'length'` → ~7000+ bus stops.
+2. `curl -s localhost:3000/tram/stops | jq '.[0]'` — entry has `id` starting
    `HSL:`, plus `name`, `lat`, `lon`.
 3. Click a stop dot on the map → popup opens, departures list within ~1s.
-   - Lines look plausible (small integers / suffixes like `6T`).
+   - Lines look plausible (small integers / suffixes like `6T` for trams,
+     three-digit + suffix like `560`, `94A` for buses).
    - Times rendered via `formatDeparture`: `now`, `in N min`, or `—`. No
      `NaN`, no negative minutes past ~30s late.
-4. `curl -s 'localhost:3000/departures?id=<real-stop-id>' | jq` → array of
-   `{ line, departureAt }`. No `headsign` leak (server-only metadata).
-5. `curl -s 'localhost:3000/departures?id=HSL:doesnotexist' | jq` → `[]`.
+4. `curl -s 'localhost:3000/tram/departures?id=<real-stop-id>' | jq` → array
+   of `{ line, departureAt }`. No `headsign` leak (server-only metadata).
+5. `curl -s 'localhost:3000/tram/departures?id=HSL:doesnotexist' | jq` → `[]`.
    (Known-id gate, no Digitransit call.)
-6. `curl -i 'localhost:3000/departures'` → 400, `missing id`.
+6. `curl -i 'localhost:3000/tram/departures'` → 400, `missing id`.
+
+## Mode switching (browser)
+
+1. Click `BUSES` tab → map clears tram markers, then fills with bus markers
+   within ~1s. Side rail count flips to `N buses`. Chip filter rebuilds with
+   bus line numbers. No console errors.
+2. Click `TRAMS` → mirror of the above.
+3. Isolate line 4 on trams, switch to buses, switch back to trams — line 4
+   is still isolated (selection is persisted per mode under
+   `raitsikat.lineSelection.tram` / `.bus`).
+4. While a bus is isolated with route overlay shown, click `TRAMS` →
+   polyline must disappear with the bus markers; no ghost overlay carries
+   over.
 
 ## Filter
 

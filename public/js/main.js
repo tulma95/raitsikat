@@ -1,10 +1,13 @@
-// Entry point. The submodules wire most of themselves at import time
-// (map init, restoreSelection, filter listeners). This file kicks off the
-// remaining startup: layout sync, stop layer, SSE.
+// Entry point. Wires the mode tab control and orchestrates teardown +
+// reconnect when the user switches between trams and buses.
 
-import { sheetEl } from "./dom.js";
-import { initStops } from "./stops.js";
+import { sheetEl, modeTabsEl } from "./dom.js";
+import { initStops, clearStops } from "./stops.js";
 import { connect } from "./sse.js";
+import { activeMode, setActiveMode } from "./mode.js";
+import { saveAndClear, reloadForActiveMode } from "./filter.js";
+import { clearAll as clearVehicles } from "./vehicles.js";
+import { clearRoute } from "./route-overlay.js";
 
 // Keep Leaflet's bottom controls (zoom + attribution) clear of the chip tray
 // on mobile by exposing the tray's live height as a CSS custom property.
@@ -17,5 +20,42 @@ const syncSheetHeight = () => {
 new ResizeObserver(syncSheetHeight).observe(sheetEl);
 syncSheetHeight();
 
-initStops();
-connect();
+function syncTabUi() {
+  for (const btn of modeTabsEl.querySelectorAll('[role="tab"]')) {
+    const selected = btn.getAttribute("data-mode") === activeMode;
+    btn.setAttribute("aria-selected", String(selected));
+  }
+}
+
+let currentEs = null;
+
+function startForActiveMode() {
+  reloadForActiveMode();
+  initStops();
+  currentEs = connect(activeMode);
+}
+
+function switchMode(next) {
+  if (next === activeMode) return;
+  if (currentEs) {
+    currentEs.close();
+    currentEs = null;
+  }
+  saveAndClear();          // persist selection for the OLD mode, drop chips
+  clearVehicles();
+  clearRoute();
+  clearStops();
+  setActiveMode(next);     // flip activeMode (live-binding seen by everyone)
+  syncTabUi();
+  startForActiveMode();    // load selection for NEW mode, fetch its stops, open SSE
+}
+
+modeTabsEl.addEventListener("click", (ev) => {
+  const btn = ev.target.closest('[role="tab"][data-mode]');
+  if (!btn) return;
+  const next = btn.getAttribute("data-mode");
+  if (next === "tram" || next === "bus") switchMode(next);
+});
+
+syncTabUi();
+startForActiveMode();

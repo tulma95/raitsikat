@@ -1,18 +1,16 @@
 import express from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { createState } from "./state.ts";
-import { startMqttClient } from "./mqtt-client.ts";
+import { createState, type State } from "./state.ts";
+import { startMqttClient, type MqttClientHandle } from "./mqtt-client.ts";
 import { startSseServer } from "./sse-server.ts";
 import { startRouteCache } from "./route-cache.ts";
 import { startStopCache } from "./stop-cache.ts";
 import { createDigitransitClient } from "./digitransit-client.ts";
+import type { Mode } from "./types.ts";
 import { settings } from "./settings.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-const state = createState({ evictAfterMs: settings.evictMs });
-setInterval(() => state.evict(), settings.evictIntervalMs).unref();
 
 const app = express();
 app.use(express.static(join(__dirname, "..", "public")));
@@ -30,32 +28,71 @@ const digitransit = settings.digitransitApiKey
   ? createDigitransitClient(settings.digitransitApiKey)
   : null;
 
-const sse = startSseServer({ state });
-const routeCache = startRouteCache({ digitransit });
-const stopCache = startStopCache({ digitransit });
+interface ModePipeline {
+  mode: Mode;
+  state: State;
+  mqtt: MqttClientHandle;
+  dispose: () => void;
+}
 
-app.use(sse.router);
-app.use(routeCache.router);
-app.use(stopCache.router);
+function startModePipeline(mode: Mode): ModePipeline {
+  const state = createState({ evictAfterMs: settings.evictMs });
+  const sse = startSseServer({ state, path: `/${mode}/events` });
+  const routeCache = startRouteCache({ digitransit, mode });
+  const stopCache = startStopCache({ digitransit, mode });
+  app.use(sse.router);
+  app.use(routeCache.router);
+  app.use(stopCache.router);
 
-const mqttClient = startMqttClient({
-  state,
-  onConnect: () => console.log("[mqtt] subscribed to HSL tram feed"),
-  onError: (err) => console.error("[mqtt] error:", err.message),
-});
+  const mqtt = startMqttClient({
+    state,
+    mode,
+    onConnect: () => console.log(`[mqtt:${mode}] subscribed to HSL ${mode} feed`),
+    onError: (err) => console.error(`[mqtt:${mode}] error:`, err.message),
+  });
+
+  return {
+    mode,
+    state,
+    mqtt,
+    dispose: () => {
+      sse.dispose();
+      routeCache.dispose();
+      stopCache.dispose();
+    },
+  };
+}
+
+const pipelines: ModePipeline[] = [
+  startModePipeline("tram"),
+  startModePipeline("bus"),
+];
+
+setInterval(() => {
+  for (const p of pipelines) p.state.evict();
+}, settings.evictIntervalMs).unref();
 
 app.get("/healthz", (_req, res) => {
-  const lastMessageAt = mqttClient.lastMessageAt;
-  const lastMqttMessageAt = lastMessageAt ? new Date(lastMessageAt).toISOString() : null;
-  const fresh =
-    mqttClient.connected &&
-    lastMessageAt !== null &&
-    Date.now() - lastMessageAt < settings.mqttLivenessMs;
-  res.status(fresh ? 200 : 503).json({
-    mqttConnected: mqttClient.connected,
-    vehicleCount: state.snapshot().length,
-    lastMqttMessageAt,
-  });
+  const modes = Object.fromEntries(
+    pipelines.map((p) => {
+      const lastMessageAt = p.mqtt.lastMessageAt;
+      return [
+        p.mode,
+        {
+          mqttConnected: p.mqtt.connected,
+          vehicleCount: p.state.snapshot().length,
+          lastMqttMessageAt: lastMessageAt ? new Date(lastMessageAt).toISOString() : null,
+        },
+      ];
+    }),
+  );
+  const fresh = pipelines.every(
+    (p) =>
+      p.mqtt.connected &&
+      p.mqtt.lastMessageAt !== null &&
+      Date.now() - p.mqtt.lastMessageAt < settings.mqttLivenessMs,
+  );
+  res.status(fresh ? 200 : 503).json(modes);
 });
 
 const server = app.listen(settings.port, () => {
@@ -73,15 +110,21 @@ const shutdown = (signal: NodeJS.Signals) => {
     process.exit(1);
   }, 10_000);
 
-  sse.dispose();
+  for (const p of pipelines) p.dispose();
   server.close((err) => {
     if (err) console.error("[shutdown] http close error:", err.message);
   });
-  mqttClient
-    .end()
-    .catch((err: unknown) =>
-      console.error("[shutdown] mqtt end error:", err instanceof Error ? err.message : err),
-    )
+  Promise.allSettled(pipelines.map((p) => p.mqtt.end()))
+    .then((results) => {
+      for (const r of results) {
+        if (r.status === "rejected") {
+          console.error(
+            "[shutdown] mqtt end error:",
+            r.reason instanceof Error ? r.reason.message : r.reason,
+          );
+        }
+      }
+    })
     .finally(() => {
       clearTimeout(forceExit);
       process.exit(0);

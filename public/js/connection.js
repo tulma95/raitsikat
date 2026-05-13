@@ -35,7 +35,7 @@ export function trackConnection(es) {
     if (escalated || graceTimer || escalateTimer) return;
     graceTimer = setTimeout(() => {
       graceTimer = null;
-      show("reconnecting", "Reconnecting to tram feed…");
+      show("reconnecting", "Reconnecting to live feed…");
       escalateTimer = setTimeout(() => {
         escalateTimer = null;
         escalated = true;

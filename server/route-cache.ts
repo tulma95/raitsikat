@@ -1,9 +1,11 @@
 import { Router, type Request, type Response } from "express";
 import type { DigitransitClient } from "./digitransit-client.ts";
+import type { Mode } from "./types.ts";
 import { createCoalescer, startRefillScheduler } from "./cache-helpers.ts";
 
 export interface RouteCacheOptions {
   digitransit: DigitransitClient | null;
+  mode: Mode;
   path?: string;
   refreshIntervalMs?: number;
   refreshGateMs?: number;
@@ -12,10 +14,12 @@ export interface RouteCacheOptions {
 
 export interface RouteCacheHandle {
   router: Router;
+  dispose: () => void;
 }
 
 export function startRouteCache(opts: RouteCacheOptions): RouteCacheHandle {
-  const path = opts.path ?? "/route";
+  const path = opts.path ?? `/${opts.mode}/route`;
+  const label = `route-cache:${opts.mode}`;
   const refreshIntervalMs = opts.refreshIntervalMs ?? 5 * 60 * 1000;
   const refreshGateMs = opts.refreshGateMs ?? 24 * 60 * 60 * 1000;
 
@@ -39,18 +43,19 @@ export function startRouteCache(opts: RouteCacheOptions): RouteCacheHandle {
     return best || id; // empty knownRouteIds (pre-warmup) → fall back to original
   }
 
+  let scheduler: { stop: () => void } | null = null;
   if (opts.digitransit) {
     const digitransit = opts.digitransit;
-    startRefillScheduler({
+    scheduler = startRefillScheduler({
       intervalMs: refreshIntervalMs,
       gateMs: refreshGateMs,
-      label: "route-cache",
+      label,
       now: opts.now,
       refill: async () => {
         let allOk = true;
         let updated = 0;
         try {
-          const routes = await digitransit.listTramRoutes();
+          const routes = await digitransit.listRoutes(opts.mode);
           knownRouteIds.clear();
           for (const r of routes) knownRouteIds.add(r.id);
           for (const route of routes) {
@@ -64,7 +69,7 @@ export function startRouteCache(opts: RouteCacheOptions): RouteCacheHandle {
               } catch (err) {
                 allOk = false;
                 console.error(
-                  `[route-cache] pattern fetch failed for ${route.id}/${dir}:`,
+                  `[${label}] pattern fetch failed for ${route.id}/${dir}:`,
                   (err as Error).message,
                 );
               }
@@ -72,14 +77,18 @@ export function startRouteCache(opts: RouteCacheOptions): RouteCacheHandle {
           }
         } catch (err) {
           allOk = false;
-          console.error("[route-cache] route list fetch failed:", (err as Error).message);
+          console.error(`[${label}] route list fetch failed:`, (err as Error).message);
         }
 
         if (allOk) {
-          console.log(`[route-cache] refreshed ${updated} patterns; cache size = ${cache.size}`);
+          console.log(`[${label}] refreshed ${updated} patterns; cache size = ${cache.size}`);
+        } else if (updated > 0) {
+          console.warn(
+            `[${label}] partial refresh: updated ${updated} patterns, will retry in ${refreshIntervalMs / 1000}s`,
+          );
         } else {
           console.warn(
-            `[route-cache] partial refresh: updated ${updated} patterns, will retry in ${refreshIntervalMs / 1000}s`,
+            `[${label}] refresh failed, will retry in ${refreshIntervalMs / 1000}s`,
           );
         }
         return allOk;
@@ -131,12 +140,15 @@ export function startRouteCache(opts: RouteCacheOptions): RouteCacheHandle {
       res.json({ polyline: poly });
     } catch (err) {
       console.error(
-        `[route-cache] lazy fetch failed for ${lookupId}/${dirId}:`,
+        `[${label}] lazy fetch failed for ${lookupId}/${dirId}:`,
         (err as Error).message,
       );
       res.json({ polyline: null });
     }
   });
 
-  return { router };
+  return {
+    router,
+    dispose: () => scheduler?.stop(),
+  };
 }

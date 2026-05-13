@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0d0f12" />
-  <title>Raitsikat — HSL Trams, Live</title>
+  <title>Raitsikat — HSL Trams & Buses, Live</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -26,24 +26,27 @@
     <span class="conn-toast__dot" aria-hidden="true"></span>
     <span class="conn-toast__label"></span>
   </div>
-  <div id="map" aria-label="Live map of Helsinki trams"></div>
+  <div id="map" aria-label="Live map of Helsinki public transport"></div>
 
   <header id="topbar">
     <div class="brand">
       <h1>Raitsikat</h1>
-      <p class="brand__sub">HSL trams · live</p>
     </div>
-    <span id="tram-count-top" class="topbar__count" data-tram-count>0 trams</span>
+    <nav id="mode-tabs" role="tablist" aria-label="Vehicle mode">
+      <button type="button" role="tab" data-mode="tram" aria-selected="true">Trams</button>
+      <button type="button" role="tab" data-mode="bus" aria-selected="false">Buses</button>
+    </nav>
+    <span id="vehicle-count-top" class="topbar__count" data-vehicle-count>0 trams</span>
   </header>
 
-  <section id="sheet" aria-label="Tram line filter">
+  <section id="sheet" aria-label="Line filter">
     <button id="sheet-toggle" aria-expanded="false" aria-controls="sheet-body">
       <span class="sheet__handle" aria-hidden="true"></span>
       <span class="sheet__title">Lines</span>
-      <span class="sheet__count" id="tram-count" data-tram-count>0 trams</span>
+      <span class="sheet__count" id="vehicle-count" data-vehicle-count>0 trams</span>
     </button>
     <div id="sheet-body">
-      <div id="line-filter" role="group" aria-label="Show or hide tram lines"></div>
+      <div id="line-filter" role="group" aria-label="Show or hide lines"></div>
     </div>
   </section>
 

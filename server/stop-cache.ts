@@ -1,9 +1,11 @@
 import { Router, type Request, type Response } from "express";
-import type { DigitransitClient, StopDeparture, TramStop } from "./digitransit-client.ts";
+import type { DigitransitClient, StopDeparture, Stop } from "./digitransit-client.ts";
+import type { Mode } from "./types.ts";
 import { createCoalescer, startRefillScheduler } from "./cache-helpers.ts";
 
 export interface StopCacheOptions {
   digitransit: DigitransitClient | null;
+  mode: Mode;
   stopsPath?: string;
   departuresPath?: string;
   refreshIntervalMs?: number;
@@ -13,6 +15,7 @@ export interface StopCacheOptions {
 
 export interface StopCacheHandle {
   router: Router;
+  dispose: () => void;
 }
 
 // `headsign` is server-only metadata; strip before sending so the wire payload
@@ -20,38 +23,40 @@ export interface StopCacheHandle {
 type DeparturePayload = Pick<StopDeparture, "line" | "departureAt">;
 
 export function startStopCache(opts: StopCacheOptions): StopCacheHandle {
-  const stopsPath = opts.stopsPath ?? "/stops";
-  const departuresPath = opts.departuresPath ?? "/departures";
+  const stopsPath = opts.stopsPath ?? `/${opts.mode}/stops`;
+  const departuresPath = opts.departuresPath ?? `/${opts.mode}/departures`;
+  const label = `stop-cache:${opts.mode}`;
   const refreshIntervalMs = opts.refreshIntervalMs ?? 5 * 60 * 1000;
   const refreshGateMs = opts.refreshGateMs ?? 24 * 60 * 60 * 1000;
 
   // Single source of truth — serves both the /stops list (via cached JSON) and
   // the /departures known-id gate (via .has()).
-  const stopsById = new Map<string, TramStop>();
+  const stopsById = new Map<string, Stop>();
   // /stops is hit on every page load with a payload that changes at most once
   // a day. Cache the serialized body so we skip JSON.stringify per request.
   let stopsJson = "[]";
   // Coalesce concurrent identical lazy lookups for the same stop's departures.
   const coalescer = createCoalescer<string, DeparturePayload[]>();
 
+  let scheduler: { stop: () => void } | null = null;
   if (opts.digitransit) {
     const digitransit = opts.digitransit;
-    startRefillScheduler({
+    scheduler = startRefillScheduler({
       intervalMs: refreshIntervalMs,
       gateMs: refreshGateMs,
-      label: "stop-cache",
+      label,
       now: opts.now,
       refill: async () => {
         try {
-          const fetched = await digitransit.listTramStops();
+          const fetched = await digitransit.listStops(opts.mode);
           stopsById.clear();
           for (const s of fetched) stopsById.set(s.id, s);
           stopsJson = JSON.stringify(fetched);
-          console.log(`[stop-cache] refreshed ${fetched.length} stops`);
+          console.log(`[${label}] refreshed ${fetched.length} stops`);
           return true;
         } catch (err) {
           console.error(
-            `[stop-cache] stop list fetch failed (will retry in ${refreshIntervalMs / 1000}s):`,
+            `[${label}] stop list fetch failed (will retry in ${refreshIntervalMs / 1000}s):`,
             (err as Error).message,
           );
           return false;
@@ -88,16 +93,19 @@ export function startStopCache(opts: StopCacheOptions): StopCacheHandle {
     const digitransit = opts.digitransit;
     try {
       const departures = await coalescer.run(stopId, async () => {
-        const raw = await digitransit.fetchStopDepartures(stopId);
+        const raw = await digitransit.fetchStopDepartures(stopId, opts.mode);
         // strip headsign — server-only metadata, see DeparturePayload
         return raw.map((d) => ({ line: d.line, departureAt: d.departureAt }));
       });
       res.json(departures);
     } catch (err) {
-      console.error(`[stop-cache] departures fetch failed for ${stopId}:`, (err as Error).message);
+      console.error(`[${label}] departures fetch failed for ${stopId}:`, (err as Error).message);
       res.json([]);
     }
   });
 
-  return { router };
+  return {
+    router,
+    dispose: () => scheduler?.stop(),
+  };
 }

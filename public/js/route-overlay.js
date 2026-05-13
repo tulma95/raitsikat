@@ -7,6 +7,7 @@
 
 import { map } from "./map.js";
 import { decodePolyline } from "./pure.js";
+import { activeMode } from "./mode.js";
 
 let currentPath = null;
 let currentPathKey = null;
@@ -24,7 +25,9 @@ export async function showRoute(routeId, dirId) {
 
   let polyline;
   try {
-    const res = await fetch(`/route?id=${encodeURIComponent(routeId)}&dir=${dirId}`);
+    const res = await fetch(
+      `/${activeMode}/route?id=${encodeURIComponent(routeId)}&dir=${dirId}`,
+    );
     if (!res.ok) return;
     const body = await res.json();
     polyline = body.polyline;

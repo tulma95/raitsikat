@@ -1,10 +1,11 @@
 import mqtt from "mqtt";
 import type { State } from "./state.ts";
-import type { Vehicle } from "./types.ts";
+import type { Mode, Vehicle } from "./types.ts";
 
 export interface MqttClientOptions {
   url?: string;
   topic?: string;
+  mode: Mode;
   state: State;
   onConnect?: () => void;
   onError?: (err: Error) => void;
@@ -30,7 +31,7 @@ interface HfpPayload {
 
 export function startMqttClient(opts: MqttClientOptions): MqttClientHandle {
   const url = opts.url ?? "mqtts://mqtt.hsl.fi:8883";
-  const topic = opts.topic ?? "/hfp/v2/journey/ongoing/vp/tram/#";
+  const topic = opts.topic ?? `/hfp/v2/journey/ongoing/vp/${opts.mode}/#`;
 
   const client = mqtt.connect(url, { reconnectPeriod: 2000 });
   let lastMessageAt: number | null = null;
