@@ -45,8 +45,9 @@ export function startMqttClient(opts: MqttClientOptions): MqttClientHandle {
   client.on("error", (err) => opts.onError?.(err));
 
   client.on("message", (topic, payload) => {
-    lastMessageAt = Date.now();
-    const vehicle = parseMessage(topic, payload);
+    const now = Date.now();
+    lastMessageAt = now;
+    const vehicle = parseMessage(topic, payload, now);
     if (vehicle) opts.state.upsert(vehicle);
   });
 
@@ -65,7 +66,7 @@ export function startMqttClient(opts: MqttClientOptions): MqttClientHandle {
   };
 }
 
-export function parseMessage(topic: string, payload: Buffer): Vehicle | null {
+export function parseMessage(topic: string, payload: Buffer, now: number): Vehicle | null {
   // HFP v2 topic shape:
   // /hfp/v2/<journey_type>/<temporal_type>/<event_type>/<transport_mode>/<operator_id>/<vehicle_number>/<route_id>/<direction_id>/<headsign>/<start_time>/<next_stop>/<geohash_l>/<geohash>
   // After splitting on "/", index 0 is the empty string from the leading "/",
@@ -100,6 +101,6 @@ export function parseMessage(topic: string, payload: Buffer): Vehicle | null {
     lat: vp.lat,
     lon: vp.long,
     heading: vp.hdg,
-    updatedAt: Date.now(),
+    updatedAt: now,
   };
 }

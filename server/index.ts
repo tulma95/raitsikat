@@ -23,16 +23,20 @@ app.use(
   }),
 );
 
-const sse = startSseServer({ app, state });
-
 if (!settings.digitransitApiKey) {
   console.warn("[digitransit] DIGITRANSIT_API_KEY not set — route overlays and stops disabled");
 }
 const digitransit = settings.digitransitApiKey
   ? createDigitransitClient(settings.digitransitApiKey)
   : null;
-startRouteCache({ app, digitransit });
-startStopCache({ app, digitransit });
+
+const sse = startSseServer({ state });
+const routeCache = startRouteCache({ digitransit });
+const stopCache = startStopCache({ digitransit });
+
+app.use(sse.router);
+app.use(routeCache.router);
+app.use(stopCache.router);
 
 const mqttClient = startMqttClient({
   state,

@@ -1,8 +1,8 @@
-import type { Express, Request, Response } from "express";
+import { Router, type Request, type Response } from "express";
 import type { DigitransitClient } from "./digitransit-client.ts";
+import { createCoalescer, startRefillScheduler } from "./cache-helpers.ts";
 
 export interface RouteCacheOptions {
-  app: Express;
   digitransit: DigitransitClient | null;
   path?: string;
   refreshIntervalMs?: number;
@@ -10,11 +10,14 @@ export interface RouteCacheOptions {
   now?: () => number;
 }
 
-export function startRouteCache(opts: RouteCacheOptions): void {
+export interface RouteCacheHandle {
+  router: Router;
+}
+
+export function startRouteCache(opts: RouteCacheOptions): RouteCacheHandle {
   const path = opts.path ?? "/route";
   const refreshIntervalMs = opts.refreshIntervalMs ?? 5 * 60 * 1000;
   const refreshGateMs = opts.refreshGateMs ?? 24 * 60 * 60 * 1000;
-  const now = opts.now ?? Date.now;
 
   const cache = new Map<string, string>(); // key: `${routeId}/${dirId}` -> encoded polyline
   // Set of published GTFS route ids (e.g. "HSL:1004", "HSL:1004H", "HSL:100H").
@@ -23,8 +26,7 @@ export function startRouteCache(opts: RouteCacheOptions): void {
   const knownRouteIds = new Set<string>();
   // Coalesce concurrent identical lazy lookups so N parallel cache-miss requests
   // for the same route hit Digitransit only once.
-  const inFlightLookups = new Map<string, Promise<string | null>>();
-  let lastSuccessAt = 0;
+  const coalescer = createCoalescer<string, string | null>();
 
   const key = (routeId: string, dirId: 1 | 2) => `${routeId}/${dirId}`;
 
@@ -37,57 +39,56 @@ export function startRouteCache(opts: RouteCacheOptions): void {
     return best || id; // empty knownRouteIds (pre-warmup) → fall back to original
   }
 
-  let inFlight = false;
-  async function attemptRefill(): Promise<void> {
-    if (inFlight) return;
-    inFlight = true;
-    try {
-      if (!opts.digitransit) return;
-      if (now() - lastSuccessAt < refreshGateMs) return;
-
-      let allOk = true;
-      let updated = 0;
-      try {
-        const routes = await opts.digitransit.listTramRoutes();
-        knownRouteIds.clear();
-        for (const r of routes) knownRouteIds.add(r.id);
-        for (const route of routes) {
-          for (const dir of [1, 2] as const) {
-            try {
-              const poly = await opts.digitransit.fetchPatternGeometry(route.id, dir);
-              if (poly) {
-                cache.set(key(route.id, dir), poly);
-                updated++;
+  if (opts.digitransit) {
+    const digitransit = opts.digitransit;
+    startRefillScheduler({
+      intervalMs: refreshIntervalMs,
+      gateMs: refreshGateMs,
+      label: "route-cache",
+      now: opts.now,
+      refill: async () => {
+        let allOk = true;
+        let updated = 0;
+        try {
+          const routes = await digitransit.listTramRoutes();
+          knownRouteIds.clear();
+          for (const r of routes) knownRouteIds.add(r.id);
+          for (const route of routes) {
+            for (const dir of [1, 2] as const) {
+              try {
+                const poly = await digitransit.fetchPatternGeometry(route.id, dir);
+                if (poly) {
+                  cache.set(key(route.id, dir), poly);
+                  updated++;
+                }
+              } catch (err) {
+                allOk = false;
+                console.error(
+                  `[route-cache] pattern fetch failed for ${route.id}/${dir}:`,
+                  (err as Error).message,
+                );
               }
-            } catch (err) {
-              allOk = false;
-              console.error(`[route-cache] pattern fetch failed for ${route.id}/${dir}:`, (err as Error).message);
             }
           }
+        } catch (err) {
+          allOk = false;
+          console.error("[route-cache] route list fetch failed:", (err as Error).message);
         }
-      } catch (err) {
-        allOk = false;
-        console.error("[route-cache] route list fetch failed:", (err as Error).message);
-      }
 
-      if (allOk) {
-        lastSuccessAt = now();
-        console.log(`[route-cache] refreshed ${updated} patterns; cache size = ${cache.size}`);
-      } else {
-        console.warn(`[route-cache] partial refresh: updated ${updated} patterns, will retry in ${refreshIntervalMs / 1000}s`);
-      }
-    } finally {
-      inFlight = false;
-    }
+        if (allOk) {
+          console.log(`[route-cache] refreshed ${updated} patterns; cache size = ${cache.size}`);
+        } else {
+          console.warn(
+            `[route-cache] partial refresh: updated ${updated} patterns, will retry in ${refreshIntervalMs / 1000}s`,
+          );
+        }
+        return allOk;
+      },
+    });
   }
 
-  // Kick off immediately, then poll on interval. The 24h gate inside attemptRefill
-  // makes most ticks no-ops; this keeps us self-healing on transient failures.
-  attemptRefill().catch((err) => console.error("[route-cache] refill threw:", err));
-  const ticker = setInterval(() => { attemptRefill().catch((err) => console.error("[route-cache] refill threw:", err)); }, refreshIntervalMs);
-  ticker.unref();
-
-  opts.app.get(path, async (req: Request, res: Response) => {
+  const router = Router();
+  router.get(path, async (req: Request, res: Response) => {
     const routeId = typeof req.query.id === "string" ? req.query.id : "";
     const dirRaw = typeof req.query.dir === "string" ? req.query.dir : "";
     if (!routeId) {
@@ -120,27 +121,22 @@ export function startRouteCache(opts: RouteCacheOptions): void {
     }
 
     const lookupKey = key(lookupId, dirId);
-    let pending = inFlightLookups.get(lookupKey);
-    if (!pending) {
-      const digitransit = opts.digitransit;
-      pending = (async () => {
-        try {
-          const poly = await digitransit.fetchPatternGeometry(lookupId, dirId);
-          if (poly) cache.set(lookupKey, poly);
-          return poly ?? null;
-        } finally {
-          inFlightLookups.delete(lookupKey);
-        }
-      })();
-      inFlightLookups.set(lookupKey, pending);
-    }
-
+    const digitransit = opts.digitransit;
     try {
-      const poly = await pending;
+      const poly = await coalescer.run(lookupKey, async () => {
+        const result = await digitransit.fetchPatternGeometry(lookupId, dirId);
+        if (result) cache.set(lookupKey, result);
+        return result ?? null;
+      });
       res.json({ polyline: poly });
     } catch (err) {
-      console.error(`[route-cache] lazy fetch failed for ${lookupId}/${dirId}:`, (err as Error).message);
+      console.error(
+        `[route-cache] lazy fetch failed for ${lookupId}/${dirId}:`,
+        (err as Error).message,
+      );
       res.json({ polyline: null });
     }
   });
+
+  return { router };
 }

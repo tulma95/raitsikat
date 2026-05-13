@@ -1,15 +1,15 @@
-import type { Express, Request, Response } from "express";
+import { Router, type Request, type Response } from "express";
 import type { State } from "./state.ts";
 import type { Vehicle } from "./types.ts";
 
 export interface SseServerOptions {
-  app: Express;
   state: State;
   path?: string;
   heartbeatMs?: number;
 }
 
 export interface SseServerHandle {
+  router: Router;
   dispose: () => void;
 }
 
@@ -49,7 +49,8 @@ export function startSseServer(opts: SseServerOptions): SseServerHandle {
   }, heartbeatMs);
   heartbeat.unref();
 
-  opts.app.get(path, (req: Request, res: Response) => {
+  const router = Router();
+  router.get(path, (req: Request, res: Response) => {
     let nextId = 1;
 
     const writeEvent = (event: string, data: unknown) => {
@@ -74,6 +75,7 @@ export function startSseServer(opts: SseServerOptions): SseServerHandle {
   });
 
   return {
+    router,
     dispose: () => {
       opts.state.off("update", onUpdate);
       opts.state.off("remove", onRemove);
