@@ -77,14 +77,26 @@ function renderDepartures(list, departures) {
   }
 }
 
+// circleMarker uses a fixed pixel radius, so without this the dots would
+// shrink relative to the map as the user zooms in. Step up the radius (and
+// the ring weight proportionally) so a stop looks like the same physical
+// thing on the ground at every zoom level we show it at.
+function radiusForZoom(zoom) {
+  return 4 + Math.max(0, zoom - 14) * 1.5;
+}
+function weightForZoom(zoom) {
+  return 1.5 + Math.max(0, zoom - 14) * 0.25;
+}
+
 function buildStopMarker(stop, mode) {
   // Cream fill + dark ring reads as "transit stop" against both the dark
   // toned tiles and any lighter regions (parks, water labels). Small enough
   // to stay visual furniture; the ring keeps it legible at any zoom.
+  const zoom = map.getZoom();
   const marker = L.circleMarker([stop.lat, stop.lon], {
     pane: "stopsPane",
-    radius: 4,
-    weight: 1.5,
+    radius: radiusForZoom(zoom),
+    weight: weightForZoom(zoom),
     color: "#0d0f12",
     fillColor: "#ecece6",
     fillOpacity: 1,
@@ -133,9 +145,17 @@ function buildStopMarker(stop, mode) {
 }
 
 function syncStopLayer() {
-  const shouldShow = map.getZoom() >= 14;
+  const zoom = map.getZoom();
+  const shouldShow = zoom >= 14;
   if (shouldShow && !map.hasLayer(stopsLayer)) stopsLayer.addTo(map);
   if (!shouldShow && map.hasLayer(stopsLayer)) map.removeLayer(stopsLayer);
+  if (!shouldShow) return;
+  const radius = radiusForZoom(zoom);
+  const weight = weightForZoom(zoom);
+  stopsLayer.eachLayer((m) => {
+    m.setRadius(radius);
+    m.setStyle({ weight });
+  });
 }
 
 // If /stops responds before the server-side warmup has populated the cache,
