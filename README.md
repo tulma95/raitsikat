@@ -1,10 +1,10 @@
 # Raitsikat
 
-Realtime map of Helsinki trams, powered by HSL's MQTT High-Frequency Positioning (HFP) feed.
+Realtime map of Helsinki trams and buses, powered by HSL's MQTT High-Frequency Positioning (HFP) feed.
 
 Live: https://raitsikat.rigster.cv
 
-Trams are streamed from HSL over MQTT, kept in memory on the backend, and pushed to the browser via Server-Sent Events. The frontend draws each tram on a Leaflet map, lets you filter by line, click a tram to see its route polyline, and is installable as a PWA.
+Trams and buses are streamed from HSL over MQTT, kept in memory on the backend, and pushed to the browser via Server-Sent Events. The frontend draws each vehicle on a Leaflet map, lets you filter by line, click a vehicle to see its route polyline, and is installable as a PWA. Switch modes from the topbar.
 
 ## Requirements
 
@@ -38,5 +38,5 @@ A `.env` file in the project root is loaded automatically.
 
 ## How it works
 
-- Backend (`server/`) subscribes to `mqtts://mqtt.hsl.fi:8883` topic `/hfp/v2/journey/ongoing/vp/tram/#`, keeps an in-memory map of tram positions, evicts stale entries after 60 seconds, and relays snapshots + updates over Server-Sent Events at `/events`. Route geometries are fetched on demand from Digitransit and cached.
-- Frontend (`public/`) is plain HTML + vanilla JS + Leaflet. Draws tram markers on an OpenStreetMap base map; line chips toggle visibility, and selection persists in `localStorage`.
+- Backend (`server/`) subscribes to `mqtts://mqtt.hsl.fi:8883` for both tram (`/hfp/v2/journey/ongoing/vp/tram/#`) and bus (`/hfp/v2/journey/ongoing/vp/bus/#`) HFP feeds, keeps an in-memory map of vehicle positions, evicts stale entries after 60 seconds, and relays snapshots + updates over Server-Sent Events at `/events`. Route geometries are fetched on demand from Digitransit and cached.
+- Frontend (`public/`) is plain HTML + vanilla JS + Leaflet. Draws vehicle markers on an OpenStreetMap base map; mode tabs switch between trams and buses, line chips toggle visibility, and selection persists in `localStorage`.

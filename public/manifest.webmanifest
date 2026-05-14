@@ -1,7 +1,7 @@
 {
-  "name": "Raitsikat — HSL Trams, Live",
+  "name": "Raitsikat — HSL Trams & Buses, Live",
   "short_name": "Raitsikat",
-  "description": "Realtime map of Helsinki trams.",
+  "description": "Live map of Helsinki trams and buses, powered by HSL.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
