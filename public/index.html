@@ -1,10 +1,41 @@
 <!doctype html>
-<html lang="en">
+<html lang="fi">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0d0f12" />
   <title>Raitsikat — HSL Trams & Buses, Live</title>
+  <meta name="description" content="Helsingin ratikat ja bussit kartalla reaaliajassa. HSL:n MQTT-syöte. Live map of Helsinki trams and buses, powered by HSL.">
+  <link rel="canonical" href="https://raitsikat.rigster.cv/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Raitsikat">
+  <meta property="og:title" content="Raitsikat — Helsingin ratikat ja bussit kartalla, reaaliajassa">
+  <meta property="og:description" content="Live-kartta Helsingin ratikoista ja busseista. HSL:n MQTT-syötteestä.">
+  <meta property="og:url" content="https://raitsikat.rigster.cv/">
+  <meta property="og:image" content="https://raitsikat.rigster.cv/icons/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="fi_FI">
+  <meta property="og:locale:alternate" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Raitsikat — Helsingin ratikat ja bussit kartalla">
+  <meta name="twitter:description" content="Live-kartta Helsingin ratikoista ja busseista.">
+  <meta name="twitter:image" content="https://raitsikat.rigster.cv/icons/og-image.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Raitsikat",
+    "url": "https://raitsikat.rigster.cv/",
+    "description": "Live-kartta Helsingin ratikoista ja busseista. HSL:n MQTT-syötteestä.",
+    "applicationCategory": "TravelApplication",
+    "operatingSystem": "Any",
+    "browserRequirements": "Requires JavaScript",
+    "inLanguage": ["fi", "en"],
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+    "screenshot": "https://raitsikat.rigster.cv/icons/og-image.png"
+  }
+  </script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -22,6 +53,27 @@
   <script defer src="https://vahti.rigster.cv/script.js" data-website-id="2b352cb3-1936-4060-9fb3-6d18ee2aa4e0"></script>
 </head>
 <body>
+  <noscript>
+    <article class="seo-fallback">
+      <h1>Raitsikat — Helsingin ratikat ja bussit kartalla, reaaliajassa</h1>
+      <p>Raitsikat näyttää HSL:n raitiovaunut ja bussit Helsingin kartalla
+      reaaliajassa. Datalähteenä on HSL:n julkinen MQTT-syöte (High-Frequency
+      Positioning). Voit suodattaa linjoittain ja klikata vaunua nähdäksesi
+      sen reitin.</p>
+      <p>Raitsikat shows Helsinki's HSL trams and buses on a live map,
+      streamed from HSL's public MQTT feed. Filter by line, click a
+      vehicle for its route.</p>
+      <p>Sovellus toimii selaimessa eikä vaadi rekisteröitymistä.
+      Asennettavissa myös PWA:na.</p>
+    </article>
+  </noscript>
+
+  <div class="seo-hidden">
+    <h1>Raitsikat — Helsingin ratikat ja bussit kartalla, reaaliajassa</h1>
+    <p>HSL:n raitiovaunut ja bussit live-kartalla Helsingissä.
+    Helsinki trams and buses live map, HSL realtime data.</p>
+  </div>
+
   <div id="conn-toast" role="status" aria-live="polite" hidden>
     <span class="conn-toast__dot" aria-hidden="true"></span>
     <span class="conn-toast__label"></span>
@@ -30,7 +82,7 @@
 
   <header id="topbar">
     <div class="brand">
-      <h1>Raitsikat</h1>
+      <span class="brand__name">Raitsikat</span>
     </div>
     <nav id="mode-tabs" role="tablist" aria-label="Vehicle mode">
       <button type="button" role="tab" data-mode="tram" aria-selected="true">Trams</button>
