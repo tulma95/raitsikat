@@ -9,7 +9,8 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env server/index.ts",
     "dev": "node --watch --env-file-if-exists=.env server/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "./run_test.sh"
   },
   "keywords": [],
   "author": "",
