@@ -20,6 +20,12 @@ points all of its fetches/SSE at the matching prefix.
 `state.ts` is the per-mode join point. MQTT writes, SSE reads + subscribes
 to its `update` / `remove` events. Nothing else touches it.
 
+**`update` events are coalesced.** `state.ts` collapses repeated `upsert(v)`
+for the same id within a `settings.sseCoalesceMs` window (250 ms) into a
+single `update` emission. Subscribers see at most ~4 Hz per vehicle, not
+the raw HFP firehose. Set `coalesceMs: 0` to emit synchronously (tests
+do this).
+
 ## Composition root
 
 `server/index.ts` is the only file that knows the dependency graph. Every
@@ -91,7 +97,36 @@ flow.
 **In-place marker DOM update.** `vehicles.js::updateMarkerInPlace`
 mutates the existing icon DOM instead of rebuilding it. Rebuilding
 replays the entry animation and produces a perceived blink on every HFP
-update — don't switch back to `setIcon` without checking.
+update — don't switch back to `setIcon` without checking. It also skips
+the DOM write when heading/line are unchanged (cached on the marker as
+`_lastHeading` / `_lastLine`).
+
+**Entry animation must be wired before `addTo`.** The one-shot
+`tram-marker--enter` class is stripped by an `add` listener on the
+marker. Leaflet fires `add` synchronously inside `addTo`, so the
+listener must be attached first; otherwise the class never gets removed
+and re-additions (e.g. viewport-cull) re-trigger the animation.
+
+**Viewport culling (bus mode).** `viewport-cull.js` gates
+`marker.addTo` / `removeLayer` on the map's padded bounds (20% margin).
+A marker can exist in `vehiclesById` without being on the map, so
+"is this vehicle tracked?" and "is this marker in the DOM?" are
+different questions. The reconcile callback runs on `moveend` /
+`zoomend`; mode switches must call `viewport-cull.reset()` so a late
+event doesn't reach into the old mode's reconcile.
+
+**Filter counters are an invariant.** `filter.js` maintains
+`linesCount` (per-line count), `shownCount` (visible total), and
+`seenLines` (chip-rendered set) incrementally via `noteUpsert` /
+`noteRemove`. Any new code path that inserts/removes vehicles must call
+these — `updateCount` reads `shownCount` directly and never walks
+`vehiclesById`. When visibility flips for many lines at once (chip
+toggles, `isolateLine`, mode reload), call `recomputeShown()`.
+
+**`?perf=1` probe.** `perf.js` loads only when the query param is
+present and exposes `window.__perf.snapshot()` (SSE update rate, frame
+timings, longtasks, active marker count). Measurement procedure +
+mobile baseline numbers in `docs/perf-baseline.md`.
 
 ## Shared wire types
 
