@@ -15,6 +15,10 @@ export const settings = Object.freeze({
   // From environment
   port: parsePort(process.env.PORT) ?? 3000,
   digitransitApiKey: process.env.DIGITRANSIT_API_KEY,
+  // Public origin for canonical URLs, OG tags, hreflang alternates, and
+  // JSON-LD. Falls back to the production hostname; override in staging
+  // or other deployments so canonicals don't lie.
+  siteOrigin: process.env.SITE_ORIGIN ?? "https://raitsikat.rigster.cv",
 
   // App constants
   evictMs: 60_000,

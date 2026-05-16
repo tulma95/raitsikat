@@ -7,13 +7,21 @@ import { startSseServer } from "./sse-server.ts";
 import { startRouteCache } from "./route-cache.ts";
 import { startStopCache } from "./stop-cache.ts";
 import { createDigitransitClient } from "./digitransit-client.ts";
+import { createLocalizedIndex } from "./localized-index.ts";
 import type { Mode } from "./types.ts";
 import { settings } from "./settings.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
-app.use(express.static(join(__dirname, "..", "public")));
+
+const publicDir = join(__dirname, "..", "public");
+// Mount the localized index router BEFORE static so it wins for `/`,
+// `/fi`, `/en`. `index: false` keeps express.static from serving
+// public/index.html directly for `/`.
+const localizedIndex = createLocalizedIndex({ publicDir });
+app.use(localizedIndex.router);
+app.use(express.static(publicDir, { index: false }));
 app.use(
   "/vendor/leaflet",
   express.static(join(__dirname, "..", "node_modules", "leaflet", "dist"), {

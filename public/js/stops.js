@@ -9,6 +9,7 @@
 import { map, stopsLayer } from "./map.js";
 import { formatDeparture } from "./pure.js";
 import { activeMode } from "./mode.js";
+import { t } from "./i18n.js";
 
 // Hide departures further than this in the future. The popup's row count is
 // bounded server-side (numberOfDepartures: 6 in digitransit-client.ts); the
@@ -21,7 +22,7 @@ function buildStopPopupRoot(stop) {
 
   const name = document.createElement("div");
   name.className = "tram-stop-popup__name";
-  name.textContent = stop.name || "Unknown stop";
+  name.textContent = stop.name || t("unknownStop");
   root.appendChild(name);
 
   if (stop.code) {
@@ -56,7 +57,7 @@ function renderDepartures(list, departures) {
     return ms >= -30_000 && ms <= DEPARTURE_HORIZON_MS;
   });
   if (visible.length === 0) {
-    renderPlaceholder(list, "No departures");
+    renderPlaceholder(list, t("noDepartures"));
     return;
   }
   for (const d of visible) {
@@ -126,7 +127,7 @@ function buildStopMarker(stop, mode) {
     const list = popupEl.querySelector(".tram-stop-popup__list");
     if (!list) return;
 
-    renderPlaceholder(list, "Loading…");
+    renderPlaceholder(list, t("loading"));
     const myId = ++requestId;
 
     fetch(`/${mode}/departures?id=${encodeURIComponent(stop.id)}`)
@@ -137,7 +138,7 @@ function buildStopMarker(stop, mode) {
       })
       .catch(() => {
         if (myId !== requestId) return;
-        renderPlaceholder(list, "No departures");
+        renderPlaceholder(list, t("noDepartures"));
       });
   });
 

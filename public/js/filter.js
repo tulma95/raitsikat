@@ -14,6 +14,7 @@ import { clearRoute, showRoute } from "./route-overlay.js";
 import { escapeAttr } from "./pure.js";
 import { vehiclesById, refreshVisibility } from "./vehicles.js";
 import { activeMode } from "./mode.js";
+import { vehicleCountLabel } from "./i18n.js";
 
 export const enabledLines = new Set();
 export let allLinesEnabledByDefault = true;
@@ -22,7 +23,7 @@ const SELECTION_STORAGE_PREFIX = "raitsikat.lineSelection";
 const selectionKey = (mode) => `${SELECTION_STORAGE_PREFIX}.${mode}`;
 
 function modeLabel(mode) {
-  return mode === "bus" ? "buses" : "trams";
+  return vehicleCountLabel(mode);
 }
 
 function loadSelection() {

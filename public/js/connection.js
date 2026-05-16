@@ -1,6 +1,8 @@
 // Connection-state toast. EventSource auto-reconnects; this surfaces UI
 // only after a grace period so transient blips stay silent.
 
+import { t } from "./i18n.js";
+
 export function trackConnection(es) {
   const el = document.getElementById("conn-toast");
   const label = el.querySelector(".conn-toast__label");
@@ -35,11 +37,11 @@ export function trackConnection(es) {
     if (escalated || graceTimer || escalateTimer) return;
     graceTimer = setTimeout(() => {
       graceTimer = null;
-      show("reconnecting", "Reconnecting to live feed…");
+      show("reconnecting", t("reconnecting"));
       escalateTimer = setTimeout(() => {
         escalateTimer = null;
         escalated = true;
-        show("offline", "Offline — waiting for connection");
+        show("offline", t("offline"));
       }, 30_000);
     }, 2_000);
   });
