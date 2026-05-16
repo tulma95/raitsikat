@@ -194,6 +194,7 @@ export function createLocalizedIndex({ publicDir }: LocalizedIndexOptions) {
     (path: '/' | '/en') => (_req: express.Request, res: express.Response) => {
       res.setHeader('Content-Type', 'text/html; charset=utf-8')
       res.setHeader('Content-Language', path === '/en' ? 'en' : 'fi')
+      res.setHeader('Cache-Control', 'public, max-age=60, must-revalidate')
       res.send(rendered[path])
     }
   router.get('/', send('/'))

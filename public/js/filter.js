@@ -19,6 +19,35 @@ import { vehicleCountLabel } from "./i18n.js";
 export const enabledLines = new Set();
 export let allLinesEnabledByDefault = true;
 
+// Per-line vehicle count, and the running count of vehicles whose line is
+// currently visible. Maintained incrementally by noteUpsert / noteRemove so
+// updateCount() never has to walk vehiclesById.
+const linesCount = new Map(); // line -> number
+let shownCount = 0;
+
+// Set of lines we've ever rendered a chip for. Replaces the per-upsert
+// querySelector in ensureLineChip().
+const seenLines = new Set();
+
+let chipSortQueued = false;
+
+function queueChipSort() {
+  if (chipSortQueued) return;
+  chipSortQueued = true;
+  requestAnimationFrame(() => {
+    chipSortQueued = false;
+    const chips = Array.from(filterEl.querySelectorAll(".chip"));
+    chips.sort((a, b) =>
+      a.getAttribute("data-line").localeCompare(
+        b.getAttribute("data-line"),
+        undefined,
+        { numeric: true },
+      ),
+    );
+    for (const c of chips) filterEl.appendChild(c);
+  });
+}
+
 const SELECTION_STORAGE_PREFIX = "raitsikat.lineSelection";
 const selectionKey = (mode) => `${SELECTION_STORAGE_PREFIX}.${mode}`;
 
@@ -37,6 +66,7 @@ function loadSelection() {
     allLinesEnabledByDefault = parsed.allOn;
     if (!parsed.allOn) for (const l of parsed.lines) if (typeof l === "string") enabledLines.add(l);
   } catch {}
+  recomputeShown();
 }
 
 loadSelection();
@@ -62,12 +92,53 @@ export function isVisible(line) {
   return allLinesEnabledByDefault || enabledLines.has(line);
 }
 
+let countQueued = false;
+
 export function updateCount() {
-  const total = vehiclesById.size;
-  const shown = [...vehiclesById.values()].filter((v) => isVisible(v.line)).length;
-  const label = modeLabel(activeMode);
-  const text = allLinesEnabledByDefault ? `${total} ${label}` : `${shown} / ${total} ${label}`;
-  for (const el of countEls) el.textContent = text;
+  if (countQueued) return;
+  countQueued = true;
+  requestAnimationFrame(() => {
+    countQueued = false;
+    const total = vehiclesById.size;
+    const label = modeLabel(activeMode);
+    const text = allLinesEnabledByDefault
+      ? `${total} ${label}`
+      : `${shownCount} / ${total} ${label}`;
+    for (const el of countEls) el.textContent = text;
+  });
+}
+
+// Called from vehicles.js::upsertVehicle. prevLine is null on first insert.
+export function noteUpsert(prevLine, nextLine) {
+  if (prevLine === nextLine) return;
+  if (prevLine !== null) {
+    const prev = (linesCount.get(prevLine) ?? 0) - 1;
+    if (prev <= 0) linesCount.delete(prevLine);
+    else linesCount.set(prevLine, prev);
+    if (isVisible(prevLine)) shownCount--;
+  }
+  linesCount.set(nextLine, (linesCount.get(nextLine) ?? 0) + 1);
+  if (isVisible(nextLine)) shownCount++;
+}
+
+// Called from vehicles.js::removeVehicle.
+export function noteRemove(line) {
+  const next = (linesCount.get(line) ?? 0) - 1;
+  if (next <= 0) linesCount.delete(line);
+  else linesCount.set(line, next);
+  if (isVisible(line)) shownCount--;
+}
+
+// Recompute shownCount from scratch. Cheap (only walks distinct lines, not
+// every vehicle) and called from the rare paths where visibility flips for
+// many lines at once: refreshVisibility, isolateLine, chip-change handlers,
+// reloadForActiveMode.
+function recomputeShown() {
+  let n = 0;
+  for (const [line, count] of linesCount) {
+    if (isVisible(line)) n += count;
+  }
+  shownCount = n;
 }
 
 // Save current selection under the *current* mode's key, then drop chips and
@@ -76,7 +147,11 @@ export function saveAndClear() {
   saveSelection();
   enabledLines.clear();
   allLinesEnabledByDefault = true;
+  recomputeShown();
   filterEl.replaceChildren();
+  seenLines.clear();
+  linesCount.clear();
+  shownCount = 0;
 }
 
 // Load selection for whatever mode is currently active. main.js calls this
@@ -115,13 +190,15 @@ export function isolateLine(vehicle) {
     }
     showRoute(vehicle.routeId, vehicle.directionId);
   }
+  recomputeShown();
   refreshVisibility();
   updateCount();
   saveSelection();
 }
 
 export function ensureLineChip(line) {
-  if (filterEl.querySelector(`.chip[data-line="${CSS.escape(line)}"]`)) return;
+  if (seenLines.has(line)) return;
+  seenLines.add(line);
 
   const on = allLinesEnabledByDefault || enabledLines.has(line);
   const chip = document.createElement("label");
@@ -177,20 +254,12 @@ export function ensureLineChip(line) {
       else enabledLines.delete(line);
       chip.setAttribute("data-on", String(cb.checked));
     }
+    recomputeShown();
     refreshVisibility();
     updateCount();
     saveSelection();
   });
   filterEl.appendChild(chip);
 
-  // Numeric-aware sort so "1, 2, 10" not "1, 10, 2".
-  const chips = Array.from(filterEl.querySelectorAll(".chip"));
-  chips.sort((a, b) =>
-    a.getAttribute("data-line").localeCompare(
-      b.getAttribute("data-line"),
-      undefined,
-      { numeric: true },
-    ),
-  );
-  chips.forEach((c) => filterEl.appendChild(c));
+  queueChipSort();
 }

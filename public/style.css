@@ -328,8 +328,9 @@ body {
     0 0 0 1px rgba(34,211,184,0.35),
     0 4px 14px rgba(0,0,0,0.55),
     0 0 18px rgba(34,211,184,0.25);
+}
+.tram-marker--enter {
   animation: markerIn 380ms cubic-bezier(0.2, 1.2, 0.3, 1);
-  will-change: transform;
 }
 .tram-marker__arrow {
   position: absolute;
@@ -456,7 +457,7 @@ body {
 /* Reduced motion ------------------------------------------------ */
 
 @media (prefers-reduced-motion: reduce) {
-  .tram-marker { animation: none; }
+  .tram-marker--enter { animation: none; }
 }
 
 /* CONNECTION TOAST --------------------------------------------- */

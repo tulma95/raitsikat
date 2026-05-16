@@ -24,4 +24,5 @@ export const settings = Object.freeze({
   evictMs: 60_000,
   evictIntervalMs: 10_000,
   mqttLivenessMs: 60_000,
+  sseCoalesceMs: 250,
 });

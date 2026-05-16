@@ -44,7 +44,10 @@ interface ModePipeline {
 }
 
 function startModePipeline(mode: Mode): ModePipeline {
-  const state = createState({ evictAfterMs: settings.evictMs });
+  const state = createState({
+    evictAfterMs: settings.evictMs,
+    coalesceMs: settings.sseCoalesceMs,
+  });
   const sse = startSseServer({ state, path: `/${mode}/events` });
   const routeCache = startRouteCache({ digitransit, mode });
   const stopCache = startStopCache({ digitransit, mode });
@@ -67,6 +70,7 @@ function startModePipeline(mode: Mode): ModePipeline {
       sse.dispose();
       routeCache.dispose();
       stopCache.dispose();
+      state.dispose();
     },
   };
 }

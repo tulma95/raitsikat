@@ -9,6 +9,12 @@ import { saveAndClear, reloadForActiveMode } from "./filter.js";
 import { clearAll as clearVehicles } from "./vehicles.js";
 import { clearRoute } from "./route-overlay.js";
 import { initUserLocation } from "./location.js";
+import { reset as resetCull } from "./viewport-cull.js";
+
+// Opt-in perf probe. Loaded before SSE connects so the snapshot is counted.
+if (new URLSearchParams(location.search).has("perf")) {
+  await import("./perf.js");
+}
 
 // Keep Leaflet's bottom controls (zoom + attribution) clear of the chip tray
 // on mobile by exposing the tray's live height as a CSS custom property.
@@ -43,6 +49,10 @@ function switchMode(next) {
     currentEs = null;
   }
   saveAndClear();          // persist selection for the OLD mode, drop chips
+  // resetCull() BEFORE clearVehicles(): clearAll() re-arms the cull callback
+  // as its last step, so a reset() after it would wipe the freshly-installed
+  // onChange and leave culling silently disabled for the rest of the session.
+  resetCull();
   clearVehicles();
   clearRoute();
   clearStops();
