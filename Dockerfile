@@ -3,7 +3,10 @@ FROM node:24-alpine
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+# --include=optional is required so sharp pulls its linuxmusl prebuilt
+# binaries (@img/sharp-linuxmusl-* + @img/sharp-libvips-linuxmusl-*).
+# Without these, `require('sharp')` throws at startup on alpine.
+RUN npm ci --omit=dev --include=optional
 
 COPY server ./server
 COPY public ./public

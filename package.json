@@ -19,7 +19,8 @@
   "dependencies": {
     "express": "^5.2.1",
     "leaflet": "^1.9.4",
-    "mqtt": "^5.15.1"
+    "mqtt": "^5.15.1",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
