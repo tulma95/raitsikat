@@ -1,11 +1,13 @@
 import { Router, type Request, type Response } from "express";
 import type { DigitransitClient } from "./digitransit-client.ts";
 import type { Mode } from "./types.ts";
+import type { Logger } from "./logger.ts";
 import { createCoalescer, startRefillScheduler } from "./cache-helpers.ts";
 
 export interface RouteCacheOptions {
   digitransit: DigitransitClient | null;
   mode: Mode;
+  logger: Logger;
   path?: string;
   refreshIntervalMs?: number;
   refreshGateMs?: number;
@@ -20,6 +22,7 @@ export interface RouteCacheHandle {
 export function startRouteCache(opts: RouteCacheOptions): RouteCacheHandle {
   const path = opts.path ?? `/${opts.mode}/route`;
   const label = `route-cache:${opts.mode}`;
+  const log = opts.logger;
   const refreshIntervalMs = opts.refreshIntervalMs ?? 5 * 60 * 1000;
   const refreshGateMs = opts.refreshGateMs ?? 24 * 60 * 60 * 1000;
 
@@ -50,6 +53,7 @@ export function startRouteCache(opts: RouteCacheOptions): RouteCacheHandle {
       intervalMs: refreshIntervalMs,
       gateMs: refreshGateMs,
       label,
+      logger: log,
       now: opts.now,
       refill: async () => {
         let allOk = true;
@@ -68,28 +72,30 @@ export function startRouteCache(opts: RouteCacheOptions): RouteCacheHandle {
                 }
               } catch (err) {
                 allOk = false;
-                console.error(
-                  `[${label}] pattern fetch failed for ${route.id}/${dir}:`,
-                  (err as Error).message,
-                );
+                log.error("pattern fetch failed", {
+                  routeId: route.id,
+                  dir,
+                  err,
+                });
               }
             }
           }
         } catch (err) {
           allOk = false;
-          console.error(`[${label}] route list fetch failed:`, (err as Error).message);
+          log.error("route list fetch failed", { err });
         }
 
         if (allOk) {
-          console.log(`[${label}] refreshed ${updated} patterns; cache size = ${cache.size}`);
+          log.info("refreshed patterns", { updated, cacheSize: cache.size });
         } else if (updated > 0) {
-          console.warn(
-            `[${label}] partial refresh: updated ${updated} patterns, will retry in ${refreshIntervalMs / 1000}s`,
-          );
+          log.warn("partial refresh, will retry", {
+            updated,
+            retryInSec: refreshIntervalMs / 1000,
+          });
         } else {
-          console.warn(
-            `[${label}] refresh failed, will retry in ${refreshIntervalMs / 1000}s`,
-          );
+          log.warn("refresh failed, will retry", {
+            retryInSec: refreshIntervalMs / 1000,
+          });
         }
         return allOk;
       },
@@ -139,10 +145,7 @@ export function startRouteCache(opts: RouteCacheOptions): RouteCacheHandle {
       });
       res.json({ polyline: poly });
     } catch (err) {
-      console.error(
-        `[${label}] lazy fetch failed for ${lookupId}/${dirId}:`,
-        (err as Error).message,
-      );
+      log.error("lazy fetch failed", { routeId: lookupId, dir: dirId, err });
       res.json({ polyline: null });
     }
   });

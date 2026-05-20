@@ -8,10 +8,13 @@
 // createCoalescer — deduplicates concurrent lazy lookups for the same key, so
 // N parallel cache-miss requests trigger one upstream call.
 
+import type { Logger } from "./logger.ts";
+
 export interface RefillSchedulerOptions {
   intervalMs: number;
   gateMs: number;
   label: string;
+  logger: Logger;
   refill: () => Promise<boolean>; // resolves true on full success
   now?: () => number;
 }
@@ -41,7 +44,7 @@ export function startRefillScheduler(opts: RefillSchedulerOptions): RefillSchedu
       const ok = await opts.refill();
       if (ok) lastSuccessAt = now();
     } catch (err) {
-      console.error(`[${opts.label}] refill threw:`, (err as Error).message);
+      opts.logger.error("refill threw", { err });
     } finally {
       inFlight = false;
     }

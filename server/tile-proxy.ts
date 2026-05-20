@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import sharp from "sharp";
+import type { Logger } from "./logger.ts";
 
 // Only styles in this allowlist are proxied. Prevents the route from
 // becoming an open relay onto arbitrary Digitransit endpoints.
@@ -68,6 +69,7 @@ function cacheSet(key: string, value: CachedTile): void {
 
 export interface TileProxyOptions {
   apiKey: string;
+  logger: Logger;
 }
 
 export interface TileProxyHandle {
@@ -76,6 +78,7 @@ export interface TileProxyHandle {
 
 export function createTileProxy(opts: TileProxyOptions): TileProxyHandle {
   const router = Router();
+  const log = opts.logger;
 
   // Register the @2x route FIRST. path-to-regexp's `:y` capture is
   // non-greedy and the `.png` literal is shared between both routes, so
@@ -84,10 +87,10 @@ export function createTileProxy(opts: TileProxyOptions): TileProxyHandle {
   // `:y = "2378@2x"` and the response would silently be a non-retina
   // tile.
   router.get("/tiles/:style/:z/:x/:y@2x.png", (req, res) => {
-    void handleTile(req, res, opts.apiKey, "@2x");
+    void handleTile(req, res, opts.apiKey, "@2x", log);
   });
   router.get("/tiles/:style/:z/:x/:y.png", (req, res) => {
-    void handleTile(req, res, opts.apiKey, "");
+    void handleTile(req, res, opts.apiKey, "", log);
   });
 
   return { router };
@@ -106,6 +109,7 @@ async function handleTile(
   res: Response,
   apiKey: string,
   retina: "" | "@2x",
+  log: Logger,
 ): Promise<void> {
   // Express 5's param types are `string | string[]`; these routes only
   // ever produce scalars, but narrow defensively so a malformed capture
@@ -163,7 +167,7 @@ async function handleTile(
 
   let promise = inflight.get(cacheKey);
   if (!promise) {
-    promise = fetchAndPrepare(cacheKey, wantWebp, tilePath, apiKey);
+    promise = fetchAndPrepare(cacheKey, wantWebp, tilePath, apiKey, log);
     inflight.set(cacheKey, promise);
     // Clear the in-flight entry once it settles so future cache
     // misses can refetch (e.g. after eviction). Use a detached
@@ -188,6 +192,7 @@ async function fetchAndPrepare(
   wantWebp: boolean,
   tilePath: string,
   apiKey: string,
+  log: Logger,
 ): Promise<FetchResult> {
   const url = `${UPSTREAM_BASE}/${tilePath}.png`;
   try {
@@ -213,10 +218,7 @@ async function fetchAndPrepare(
         // Serve PNG for this request, but DON'T cache it under the
         // webp key — otherwise a single failure poisons the slot for
         // the lifetime of the process.
-        console.error(
-          "[tile-proxy] webp transcode failed:",
-          err instanceof Error ? err.message : err,
-        );
+        log.error("webp transcode failed", { tilePath, err });
         return {
           ok: true,
           tile: { body: pngBuf, contentType: "image/png" },
@@ -231,10 +233,7 @@ async function fetchAndPrepare(
     cacheSet(cacheKey, tile);
     return { ok: true, tile };
   } catch (err) {
-    console.error(
-      "[tile-proxy] upstream error:",
-      err instanceof Error ? err.message : err,
-    );
+    log.error("upstream error", { tilePath, err });
     return { ok: false, status: 502 };
   }
 }

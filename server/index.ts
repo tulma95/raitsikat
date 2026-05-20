@@ -11,6 +11,7 @@ import { createLocalizedIndex } from "./localized-index.ts";
 import { createTileProxy } from "./tile-proxy.ts";
 import type { Mode } from "./types.ts";
 import { settings } from "./settings.ts";
+import { logger } from "./logger.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -31,14 +32,19 @@ app.use(
 );
 
 if (!settings.digitransitApiKey) {
-  console.warn("[digitransit] DIGITRANSIT_API_KEY not set — route overlays and stops disabled");
+  logger
+    .child({ component: "digitransit" })
+    .warn("DIGITRANSIT_API_KEY not set — route overlays and stops disabled");
 }
 const digitransit = settings.digitransitApiKey
   ? createDigitransitClient(settings.digitransitApiKey)
   : null;
 
 if (settings.digitransitApiKey) {
-  const tiles = createTileProxy({ apiKey: settings.digitransitApiKey });
+  const tiles = createTileProxy({
+    apiKey: settings.digitransitApiKey,
+    logger: logger.child({ component: "tile-proxy" }),
+  });
   app.use(tiles.router);
 }
 
@@ -50,22 +56,32 @@ interface ModePipeline {
 }
 
 function startModePipeline(mode: Mode): ModePipeline {
+  const modeLog = logger.child({ mode });
   const state = createState({
     evictAfterMs: settings.evictMs,
     coalesceMs: settings.sseCoalesceMs,
   });
   const sse = startSseServer({ state, path: `/${mode}/events` });
-  const routeCache = startRouteCache({ digitransit, mode });
-  const stopCache = startStopCache({ digitransit, mode });
+  const routeCache = startRouteCache({
+    digitransit,
+    mode,
+    logger: modeLog.child({ component: "route-cache" }),
+  });
+  const stopCache = startStopCache({
+    digitransit,
+    mode,
+    logger: modeLog.child({ component: "stop-cache" }),
+  });
   app.use(sse.router);
   app.use(routeCache.router);
   app.use(stopCache.router);
 
+  const mqttLog = modeLog.child({ component: "mqtt" });
   const mqtt = startMqttClient({
     state,
     mode,
-    onConnect: () => console.log(`[mqtt:${mode}] subscribed to HSL ${mode} feed`),
-    onError: (err) => console.error(`[mqtt:${mode}] error:`, err.message),
+    onConnect: () => mqttLog.info("subscribed to HSL feed"),
+    onError: (err) => mqttLog.error("mqtt error", { err }),
   });
 
   return {
@@ -113,33 +129,35 @@ app.get("/healthz", (_req, res) => {
   res.status(fresh ? 200 : 503).json(modes);
 });
 
+const httpLog = logger.child({ component: "http" });
 const server = app.listen(settings.port, () => {
-  console.log(`[http] listening on http://localhost:${settings.port}`);
+  httpLog.info("listening", {
+    port: settings.port,
+    url: `http://localhost:${settings.port}`,
+  });
 });
 
+const shutdownLog = logger.child({ component: "shutdown" });
 let shuttingDown = false;
 const shutdown = (signal: NodeJS.Signals) => {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`[shutdown] received ${signal}, closing gracefully`);
+  shutdownLog.info("received signal, closing gracefully", { signal });
 
   const forceExit = setTimeout(() => {
-    console.warn("[shutdown] forcing exit after timeout");
+    shutdownLog.warn("forcing exit after timeout");
     process.exit(1);
   }, 10_000);
 
   for (const p of pipelines) p.dispose();
   server.close((err) => {
-    if (err) console.error("[shutdown] http close error:", err.message);
+    if (err) shutdownLog.error("http close error", { err });
   });
   Promise.allSettled(pipelines.map((p) => p.mqtt.end()))
     .then((results) => {
       for (const r of results) {
         if (r.status === "rejected") {
-          console.error(
-            "[shutdown] mqtt end error:",
-            r.reason instanceof Error ? r.reason.message : r.reason,
-          );
+          shutdownLog.error("mqtt end error", { err: r.reason });
         }
       }
     })

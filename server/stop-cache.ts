@@ -1,11 +1,13 @@
 import { Router, type Request, type Response } from "express";
 import type { DigitransitClient, StopDeparture, Stop } from "./digitransit-client.ts";
 import type { Mode } from "./types.ts";
+import type { Logger } from "./logger.ts";
 import { createCoalescer, startRefillScheduler } from "./cache-helpers.ts";
 
 export interface StopCacheOptions {
   digitransit: DigitransitClient | null;
   mode: Mode;
+  logger: Logger;
   stopsPath?: string;
   departuresPath?: string;
   refreshIntervalMs?: number;
@@ -26,6 +28,7 @@ export function startStopCache(opts: StopCacheOptions): StopCacheHandle {
   const stopsPath = opts.stopsPath ?? `/${opts.mode}/stops`;
   const departuresPath = opts.departuresPath ?? `/${opts.mode}/departures`;
   const label = `stop-cache:${opts.mode}`;
+  const log = opts.logger;
   const refreshIntervalMs = opts.refreshIntervalMs ?? 5 * 60 * 1000;
   const refreshGateMs = opts.refreshGateMs ?? 24 * 60 * 60 * 1000;
 
@@ -45,6 +48,7 @@ export function startStopCache(opts: StopCacheOptions): StopCacheHandle {
       intervalMs: refreshIntervalMs,
       gateMs: refreshGateMs,
       label,
+      logger: log,
       now: opts.now,
       refill: async () => {
         try {
@@ -52,13 +56,13 @@ export function startStopCache(opts: StopCacheOptions): StopCacheHandle {
           stopsById.clear();
           for (const s of fetched) stopsById.set(s.id, s);
           stopsJson = JSON.stringify(fetched);
-          console.log(`[${label}] refreshed ${fetched.length} stops`);
+          log.info("refreshed stops", { count: fetched.length });
           return true;
         } catch (err) {
-          console.error(
-            `[${label}] stop list fetch failed (will retry in ${refreshIntervalMs / 1000}s):`,
-            (err as Error).message,
-          );
+          log.error("stop list fetch failed, will retry", {
+            retryInSec: refreshIntervalMs / 1000,
+            err,
+          });
           return false;
         }
       },
@@ -99,7 +103,7 @@ export function startStopCache(opts: StopCacheOptions): StopCacheHandle {
       });
       res.json(departures);
     } catch (err) {
-      console.error(`[${label}] departures fetch failed for ${stopId}:`, (err as Error).message);
+      log.error("departures fetch failed", { stopId, err });
       res.json([]);
     }
   });

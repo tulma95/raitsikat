@@ -128,6 +128,27 @@ present and exposes `window.__perf.snapshot()` (SSE update rate, frame
 timings, longtasks, active marker count). Measurement procedure +
 mobile baseline numbers in `docs/perf-baseline.md`.
 
+## Logging
+
+One logger module, `server/logger.ts`. The root `logger` is created at
+module load from `LOG_LEVEL` (default `info`) and `LOG_FORMAT` (`json` |
+`pretty`; defaults to `pretty` on a TTY, `json` otherwise — so dev is
+readable and prod ships JSON to whatever collector reads stdout).
+
+Every factory takes a `logger: Logger` and the composition root in
+`index.ts` hands it a child bound to the right context:
+
+```
+logger.child({ mode: "tram" }).child({ component: "route-cache" })
+```
+
+Bindings travel into every line, so `grep '"component":"mqtt"'` (or
+`component=mqtt` in pretty mode) filters cleanly. Pass `Error`s under
+the `err` key — the logger serializes `name`/`message`/`stack`.
+
+Don't reach for `console.*` in server code; the typecheck won't catch it
+but it bypasses level gating and structured output.
+
 ## Shared wire types
 
 `server/types.ts` is the source of truth. `public/js/types.js` is a

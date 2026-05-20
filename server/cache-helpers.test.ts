@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createCoalescer, startRefillScheduler } from "./cache-helpers.ts";
+import { logger } from "./logger.ts";
 
 describe("createCoalescer", () => {
   it("collapses concurrent same-key calls into one factory invocation", async () => {
@@ -31,7 +32,7 @@ describe("createCoalescer", () => {
 describe("startRefillScheduler", () => {
   it("throws at construction when intervalMs >= gateMs (freeze guard)", () => {
     assert.throws(() => startRefillScheduler({
-      intervalMs: 1000, gateMs: 1000, label: "x", refill: async () => true,
+      intervalMs: 1000, gateMs: 1000, label: "x", logger, refill: async () => true,
     }), /must be </);
   });
 });
