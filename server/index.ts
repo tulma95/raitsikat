@@ -8,6 +8,7 @@ import { startRouteCache } from "./route-cache.ts";
 import { startStopCache } from "./stop-cache.ts";
 import { createDigitransitClient } from "./digitransit-client.ts";
 import { createLocalizedIndex } from "./localized-index.ts";
+import { createTileProxy } from "./tile-proxy.ts";
 import type { Mode } from "./types.ts";
 import { settings } from "./settings.ts";
 
@@ -35,6 +36,11 @@ if (!settings.digitransitApiKey) {
 const digitransit = settings.digitransitApiKey
   ? createDigitransitClient(settings.digitransitApiKey)
   : null;
+
+if (settings.digitransitApiKey) {
+  const tiles = createTileProxy({ apiKey: settings.digitransitApiKey });
+  app.use(tiles.router);
+}
 
 interface ModePipeline {
   mode: Mode;

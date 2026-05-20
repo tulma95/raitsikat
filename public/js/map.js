@@ -10,16 +10,20 @@ export const map = L.map("map", {
   attributionControl: true,
   maxBounds: HELSINKI_BOUNDS,
   maxBoundsViscosity: 1.0,
-  minZoom: 11,
+  minZoom: 12,
 }).setView(HELSINKI_CENTER, ZOOM);
 
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+L.tileLayer("/tiles/hsl-map/{z}/{x}/{y}{r}.png", {
+  tileSize: 512,
+  zoomOffset: -1,
   maxZoom: 19,
-  minZoom: 11,
+  minZoom: 12,
   bounds: HELSINKI_BOUNDS,
   attribution:
     'Data: <a href="https://hsl.fi/en/hsl/open-data" target="_blank" rel="noopener">HSL HFP</a>' +
-    ' · Tiles: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+    ' · Map: <a href="https://digitransit.fi/" target="_blank" rel="noopener">Digitransit</a>,' +
+    ' <a href="https://www.hsl.fi/" target="_blank" rel="noopener">HSL</a>,' +
+    ' <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
 }).addTo(map);
 
 map.zoomControl.setPosition("bottomright");
