@@ -5,13 +5,20 @@ import sharp from "sharp";
 // becoming an open relay onto arbitrary Digitransit endpoints.
 const ALLOWED_STYLES = new Set(["hsl-map"]);
 
-// Matches the client's Leaflet config in public/js/map.js (minZoom: 11,
-// maxZoom: 19). Out-of-range coordinates are rejected before we burn
-// upstream quota.
+// Server-side coordinate bounds. MIN_ZOOM is 11 because the client's
+// Leaflet config in public/js/map.js sets `zoomOffset: -1` with a view
+// minZoom of 12, so the lowest tile zoom actually requested upstream
+// is 11. MAX_ZOOM mirrors the client's maxZoom. Out-of-range
+// coordinates are rejected before we burn upstream quota.
 const MIN_ZOOM = 11;
 const MAX_ZOOM = 19;
 
 const UPSTREAM_BASE = "https://cdn.digitransit.fi/map/v3";
+
+// Cap how long we wait on Digitransit before giving up. Without this
+// the upstream `fetch` has no timeout and a stalled CDN keeps requests
+// (and event-loop slots / sockets) pinned indefinitely.
+const UPSTREAM_TIMEOUT_MS = 5000;
 
 // Digitransit's v3 raster endpoint returns PNG only. Modern browsers
 // advertise `image/webp` in Accept; transcode for them and cache the
@@ -29,6 +36,17 @@ interface CachedTile {
 // 2048 entries ≈ 40-100 MB worst case — well within a server-side
 // budget and bounded.
 const tileCache = new Map<string, CachedTile>();
+
+// Request coalescing: when N clients hit the same uncached tile
+// concurrently, only one upstream fetch + transcode runs. Without this
+// a fresh viewport could fan out into dozens of identical upstream
+// calls and burn Digitransit quota / CPU. Entry is removed once the
+// promise settles, so memory stays bounded by concurrency, not cache
+// size.
+type FetchResult =
+  | { ok: true; tile: CachedTile }
+  | { ok: false; status: number };
+const inflight = new Map<string, Promise<FetchResult>>();
 
 function cacheGet(key: string): CachedTile | undefined {
   const hit = tileCache.get(key);
@@ -143,49 +161,80 @@ async function handleTile(
     return;
   }
 
+  let promise = inflight.get(cacheKey);
+  if (!promise) {
+    promise = fetchAndPrepare(cacheKey, wantWebp, tilePath, apiKey);
+    inflight.set(cacheKey, promise);
+    // Clear the in-flight entry once it settles so future cache
+    // misses can refetch (e.g. after eviction). Use a detached
+    // handler so awaiters see the original result/rejection.
+    promise.finally(() => {
+      if (inflight.get(cacheKey) === promise) inflight.delete(cacheKey);
+    });
+  }
+
+  const result = await promise;
+  if (!result.ok) {
+    res.status(result.status).end();
+    return;
+  }
+  res.status(200);
+  res.setHeader("Content-Type", result.tile.contentType);
+  res.send(result.tile.body);
+}
+
+async function fetchAndPrepare(
+  cacheKey: string,
+  wantWebp: boolean,
+  tilePath: string,
+  apiKey: string,
+): Promise<FetchResult> {
   const url = `${UPSTREAM_BASE}/${tilePath}.png`;
   try {
     const upstream = await fetch(url, {
       headers: { "digitransit-subscription-key": apiKey },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     if (!upstream.ok) {
-      res.status(upstream.status).end();
-      return;
+      return { ok: false, status: upstream.status };
     }
     const pngBuf = Buffer.from(await upstream.arrayBuffer());
 
-    let body: Buffer;
-    let contentType: string;
     if (wantWebp) {
       try {
-        body = await sharp(pngBuf)
+        const body = await sharp(pngBuf)
           .webp({ quality: WEBP_QUALITY, effort: WEBP_EFFORT })
           .toBuffer();
-        contentType = "image/webp";
+        const tile: CachedTile = { body, contentType: "image/webp" };
+        cacheSet(cacheKey, tile);
+        return { ok: true, tile };
       } catch (err) {
-        // Fall back to PNG if transcode fails so the map still renders.
+        // Transcode failures may be transient (OOM, libvips hiccup).
+        // Serve PNG for this request, but DON'T cache it under the
+        // webp key — otherwise a single failure poisons the slot for
+        // the lifetime of the process.
         console.error(
           "[tile-proxy] webp transcode failed:",
           err instanceof Error ? err.message : err,
         );
-        body = pngBuf;
-        contentType = upstream.headers.get("content-type") ?? "image/png";
+        return {
+          ok: true,
+          tile: { body: pngBuf, contentType: "image/png" },
+        };
       }
-    } else {
-      body = pngBuf;
-      contentType = upstream.headers.get("content-type") ?? "image/png";
     }
 
-    cacheSet(cacheKey, { body, contentType });
-
-    res.status(200);
-    res.setHeader("Content-Type", contentType);
-    res.send(body);
+    const tile: CachedTile = {
+      body: pngBuf,
+      contentType: upstream.headers.get("content-type") ?? "image/png",
+    };
+    cacheSet(cacheKey, tile);
+    return { ok: true, tile };
   } catch (err) {
     console.error(
       "[tile-proxy] upstream error:",
       err instanceof Error ? err.message : err,
     );
-    res.status(502).end();
+    return { ok: false, status: 502 };
   }
 }
