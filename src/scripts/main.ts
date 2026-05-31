@@ -63,7 +63,8 @@ function switchMode(next: Mode): void {
 }
 
 modeTabsEl.addEventListener("click", (ev) => {
-  const btn = (ev.target as Element).closest('[role="tab"][data-mode]');
+  if (!(ev.target instanceof Element)) return;
+  const btn = ev.target.closest('[role="tab"][data-mode]');
   if (!btn) return;
   const next = btn.getAttribute("data-mode");
   if (next === "tram" || next === "bus") switchMode(next);

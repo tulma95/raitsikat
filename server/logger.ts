@@ -35,11 +35,17 @@ interface LoggerConfig {
   out: NodeJS.WritableStream;
 }
 
+function parseLevel(raw: string): number {
+  if (raw === "debug" || raw === "info" || raw === "warn" || raw === "error") {
+    return LEVELS[raw];
+  }
+  return LEVELS.info;
+}
+
 function readConfig(): LoggerConfig {
-  const lvlRaw = (process.env.LOG_LEVEL ?? "info").toLowerCase();
-  const minLevel = (LEVELS as Record<string, number>)[lvlRaw] ?? LEVELS.info;
+  const minLevel = parseLevel((process.env.LOG_LEVEL ?? "info").toLowerCase());
   const format = (process.env.LOG_FORMAT ?? "").toLowerCase();
-  const isTty = Boolean((process.stdout as NodeJS.WriteStream).isTTY);
+  const isTty = Boolean(process.stdout.isTTY);
   const pretty = format === "pretty" || (format !== "json" && isTty);
   return { minLevel, pretty, out: process.stdout };
 }
@@ -70,9 +76,10 @@ const LEVEL_STYLE: Record<LogLevel, Parameters<typeof styleText>[0]> = {
 };
 
 function renderFieldValue(k: string, v: unknown): string {
-  if (k === "err" && v && typeof v === "object") {
-    const err = v as Record<string, unknown>;
-    return String(err.message ?? err.name ?? "");
+  if (k === "err" && typeof v === "object" && v !== null) {
+    const message = "message" in v ? v.message : undefined;
+    const name = "name" in v ? v.name : undefined;
+    return String(message ?? name ?? "");
   }
   if (typeof v === "string") return v;
   try {

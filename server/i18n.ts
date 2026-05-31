@@ -148,7 +148,16 @@ const en: Strings = {
 export const translations: Record<Locale, Strings> = { fi, en };
 
 export function pickClientStrings(s: Strings): ClientStrings {
-  const out = {} as Record<ClientKey, string>;
-  for (const k of CLIENT_KEYS) out[k] = s[k];
-  return out;
+  // Explicit so the compiler enforces every ClientKey is present — a missing
+  // or extra key is a type error, not a silent gap. Keep in sync with
+  // CLIENT_KEYS (which derives ClientKey / ClientStrings).
+  return {
+    vehicleModeTram: s.vehicleModeTram,
+    vehicleModeBus: s.vehicleModeBus,
+    loading: s.loading,
+    noDepartures: s.noDepartures,
+    unknownStop: s.unknownStop,
+    reconnecting: s.reconnecting,
+    offline: s.offline,
+  };
 }

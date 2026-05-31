@@ -63,8 +63,10 @@ function loadSelection(): void {
   try {
     const raw = localStorage.getItem(selectionKey(activeMode));
     if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed.allOn !== "boolean" || !Array.isArray(parsed.lines)) return;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return;
+    if (!("allOn" in parsed) || typeof parsed.allOn !== "boolean") return;
+    if (!("lines" in parsed) || !Array.isArray(parsed.lines)) return;
     allLinesEnabledByDefault = parsed.allOn;
     if (!parsed.allOn) for (const l of parsed.lines) if (typeof l === "string") enabledLines.add(l);
   } catch {}

@@ -54,10 +54,10 @@ function makeIcon(vehicle: Vehicle): L.DivIcon {
 function updateMarkerInPlace(marker: VehicleMarker, vehicle: Vehicle): boolean {
   const root = marker._icon && marker._icon.firstElementChild;
   if (!root) return false; // not yet attached; caller will create fresh
-  const arrow = root.firstElementChild as HTMLElement | null;
+  const arrow = root.firstElementChild;
   const label = root.lastElementChild;
   const heading = Number(vehicle.heading) || 0;
-  if (arrow && marker._lastHeading !== heading) {
+  if (arrow instanceof HTMLElement && marker._lastHeading !== heading) {
     arrow.style.transform = `translate(-50%, 0) rotate(${heading}deg)`;
     marker._lastHeading = heading;
   }
@@ -78,7 +78,7 @@ export function upsertVehicle(vehicle: Vehicle): void {
 
   let marker = markers.get(vehicle.id);
   if (!marker) {
-    marker = L.marker([vehicle.lat, vehicle.lon], { icon: makeIcon(vehicle) }) as VehicleMarker;
+    marker = L.marker([vehicle.lat, vehicle.lon], { icon: makeIcon(vehicle) });
     marker.on("click", () => isolateLine(vehiclesById.get(vehicle.id) ?? vehicle));
     markers.set(vehicle.id, marker);
     // Attach BEFORE addTo: Leaflet fires `add` synchronously inside addTo,

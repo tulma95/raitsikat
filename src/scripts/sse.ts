@@ -10,7 +10,7 @@
 import { handleSnapshot, upsertVehicle, removeVehicle } from "./vehicles.ts";
 import { trackConnection } from "./connection.ts";
 import type { Mode } from "../../server/types.ts";
-import type { SnapshotEvent, UpdateEvent, RemoveEvent } from "./types.ts";
+import { isVehicle } from "./types.ts";
 
 function safeParse(data: string): unknown {
   try {
@@ -30,25 +30,29 @@ export function connect(mode: Mode): EventSource {
   const es = new EventSource(`/${mode}/events`);
   trackConnection(es);
   es.addEventListener("snapshot", (ev) => {
-    const data = (ev as MessageEvent).data as string;
-    const parsed = safeParse(data) as SnapshotEvent | null;
-    if (parsed && Array.isArray(parsed.vehicles)) {
-      notePerf("snapshot", data.length, parsed.vehicles.length);
-      handleSnapshot(parsed.vehicles);
+    if (!(ev instanceof MessageEvent) || typeof ev.data !== "string") return;
+    const data: string = ev.data;
+    const parsed = safeParse(data);
+    if (typeof parsed === "object" && parsed !== null && "vehicles" in parsed && Array.isArray(parsed.vehicles)) {
+      const vehicles = parsed.vehicles.filter(isVehicle);
+      notePerf("snapshot", data.length, vehicles.length);
+      handleSnapshot(vehicles);
     }
   });
   es.addEventListener("update", (ev) => {
-    const data = (ev as MessageEvent).data as string;
-    const parsed = safeParse(data) as UpdateEvent | null;
-    if (parsed && parsed.vehicle) {
+    if (!(ev instanceof MessageEvent) || typeof ev.data !== "string") return;
+    const data: string = ev.data;
+    const parsed = safeParse(data);
+    if (typeof parsed === "object" && parsed !== null && "vehicle" in parsed && isVehicle(parsed.vehicle)) {
       notePerf("update", data.length, 1);
       upsertVehicle(parsed.vehicle);
     }
   });
   es.addEventListener("remove", (ev) => {
-    const data = (ev as MessageEvent).data as string;
-    const parsed = safeParse(data) as RemoveEvent | null;
-    if (parsed && typeof parsed.id === "string") {
+    if (!(ev instanceof MessageEvent) || typeof ev.data !== "string") return;
+    const data: string = ev.data;
+    const parsed = safeParse(data);
+    if (typeof parsed === "object" && parsed !== null && "id" in parsed && typeof parsed.id === "string") {
       notePerf("remove", data.length, 1);
       removeVehicle(parsed.id);
     }

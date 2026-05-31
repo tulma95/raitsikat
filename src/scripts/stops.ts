@@ -13,6 +13,7 @@ import { activeMode } from "./mode.ts";
 import { t } from "./i18n.ts";
 import type { Mode } from "../../server/types.ts";
 import type { TramStop, Departure } from "./types.ts";
+import { isTramStop, isDeparture } from "./types.ts";
 
 // Hide departures further than this in the future. The popup's row count is
 // bounded server-side (numberOfDepartures: 6 in digitransit-client.ts); the
@@ -125,7 +126,8 @@ function buildStopMarker(stop: TramStop, mode: Mode): L.CircleMarker {
   );
 
   marker.on("popupopen", (ev) => {
-    const popupEl = (ev as L.PopupEvent).popup.getElement();
+    if (!("popup" in ev) || !(ev.popup instanceof L.Popup)) return;
+    const popupEl = ev.popup.getElement();
     if (!popupEl) return;
     const list = popupEl.querySelector<HTMLElement>(".tram-stop-popup__list");
     if (!list) return;
@@ -135,9 +137,9 @@ function buildStopMarker(stop: TramStop, mode: Mode): L.CircleMarker {
 
     fetch(`/${mode}/departures?id=${encodeURIComponent(stop.id)}`)
       .then((res) => (res.ok ? res.json() : []))
-      .then((departures) => {
+      .then((departures: unknown) => {
         if (myId !== requestId) return; // a newer open superseded us
-        renderDepartures(list, Array.isArray(departures) ? departures : []);
+        renderDepartures(list, Array.isArray(departures) ? departures.filter(isDeparture) : []);
       })
       .catch(() => {
         if (myId !== requestId) return;
@@ -157,9 +159,9 @@ function syncStopLayer(): void {
   const radius = radiusForZoom(zoom);
   const weight = weightForZoom(zoom);
   stopsLayer.eachLayer((m) => {
-    const cm = m as L.CircleMarker;
-    cm.setRadius(radius);
-    cm.setStyle({ weight });
+    if (!(m instanceof L.CircleMarker)) return;
+    m.setRadius(radius);
+    m.setStyle({ weight });
   });
 }
 
@@ -171,7 +173,7 @@ const STOPS_RETRY_DELAY_MS = 30_000;
 function loadStops(mode: Mode, retried: boolean): void {
   fetch(`/${mode}/stops`)
     .then((res) => (res.ok ? res.json() : []))
-    .then((stops) => {
+    .then((stops: unknown) => {
       // If the user already flipped modes during the in-flight fetch, drop
       // these stops — they belong to a stale mode.
       if (mode !== activeMode) return;
@@ -180,12 +182,7 @@ function loadStops(mode: Mode, retried: boolean): void {
         return;
       }
       for (const stop of stops) {
-        if (
-          !stop ||
-          typeof stop.id !== "string" ||
-          typeof stop.lat !== "number" ||
-          typeof stop.lon !== "number"
-        ) continue;
+        if (!isTramStop(stop)) continue;
         buildStopMarker(stop, mode).addTo(stopsLayer);
       }
       syncStopLayer();

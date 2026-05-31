@@ -18,17 +18,6 @@ export interface MqttClientHandle {
   end: () => Promise<void>;
 }
 
-interface HfpPayload {
-  VP?: {
-    desi?: string;
-    oper?: number;
-    veh?: number;
-    lat?: number;
-    long?: number;
-    hdg?: number;
-  };
-}
-
 export function startMqttClient(opts: MqttClientOptions): MqttClientHandle {
   const url = opts.url ?? "mqtts://mqtt.hsl.fi:8883";
   const topic = opts.topic ?? `/hfp/v2/journey/ongoing/vp/${opts.mode}/#`;
@@ -81,18 +70,21 @@ export function parseMessage(topic: string, payload: Buffer, now: number): Vehic
   if (!/^\d/.test(rawRouteId)) return null;
   if (rawDir !== "1" && rawDir !== "2") return null;
 
-  let data: HfpPayload;
+  let data: unknown;
   try {
     data = JSON.parse(payload.toString());
   } catch {
     return null;
   }
+  if (typeof data !== "object" || data === null || !("VP" in data)) return null;
   const vp = data.VP;
-  if (!vp) return null;
-  if (typeof vp.lat !== "number" || typeof vp.long !== "number") return null;
-  if (typeof vp.oper !== "number" || typeof vp.veh !== "number") return null;
-  if (typeof vp.desi !== "string") return null;
-  if (typeof vp.hdg !== "number") return null;
+  if (typeof vp !== "object" || vp === null) return null;
+  if (!("lat" in vp) || typeof vp.lat !== "number") return null;
+  if (!("long" in vp) || typeof vp.long !== "number") return null;
+  if (!("oper" in vp) || typeof vp.oper !== "number") return null;
+  if (!("veh" in vp) || typeof vp.veh !== "number") return null;
+  if (!("desi" in vp) || typeof vp.desi !== "string") return null;
+  if (!("hdg" in vp) || typeof vp.hdg !== "number") return null;
 
   return {
     id: `${vp.oper}/${vp.veh}`,
