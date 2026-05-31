@@ -57,7 +57,10 @@ body {
   background: var(--bg) !important;
   font-family: var(--body);
 }
-.leaflet-tile {
+/* Higher specificity than Leaflet's own `.leaflet-tile { filter: inherit }`
+   so the dark basemap treatment wins regardless of stylesheet order — the
+   bundled leaflet.css now loads after style.css. */
+.leaflet-container .leaflet-tile {
   filter: grayscale(0.55) contrast(0.92) brightness(0.74) hue-rotate(-5deg);
 }
 .leaflet-control-attribution {
