@@ -19,21 +19,27 @@ function shouldShow(vehicle: Vehicle): boolean {
   return isVisible(vehicle.line) && isInView(vehicle.lat, vehicle.lon);
 }
 
-// Walk every known vehicle and reconcile its marker's on-map state against
-// the current filter + viewport. Used as the viewport-cull callback.
-function reconcileMarkers(): void {
+// Reconcile a single marker's on-map state against the current filter +
+// viewport.
+function reconcileMarker(vehicle: Vehicle, marker: VehicleMarker): void {
+  const want = shouldShow(vehicle);
+  const onMap = map.hasLayer(marker);
+  if (want && !onMap) marker.addTo(map);
+  else if (!want && onMap) map.removeLayer(marker);
+}
+
+// Walk every known vehicle and reconcile its marker. Used both as the
+// viewport-cull (moveend/zoomend) callback and by filter.ts when visibility
+// flips for many lines at once.
+export function refreshVisibility(): void {
   for (const [id, vehicle] of vehiclesById) {
     const marker = markers.get(id);
-    if (!marker) continue;
-    const want = shouldShow(vehicle);
-    const onMap = map.hasLayer(marker);
-    if (want && !onMap) marker.addTo(map);
-    else if (!want && onMap) map.removeLayer(marker);
+    if (marker) reconcileMarker(vehicle, marker);
   }
 }
 
 // Install the moveend/zoomend listener once.
-installCull(reconcileMarkers);
+installCull(refreshVisibility);
 
 function makeIcon(vehicle: Vehicle): L.DivIcon {
   const heading = Number(vehicle.heading) || 0;
@@ -102,6 +108,10 @@ export function upsertVehicle(vehicle: Vehicle): void {
     if (!updateMarkerInPlace(marker, vehicle)) {
       marker.setIcon(makeIcon(vehicle));
     }
+    // The vehicle may have crossed the viewport edge or changed to a
+    // filtered-out line since the last tick; the cull callback only fires on
+    // map move, so reconcile here too.
+    reconcileMarker(vehicle, marker);
   }
   updateCount();
 }
@@ -119,17 +129,6 @@ export function removeVehicle(id: string): void {
   updateCount();
 }
 
-export function refreshVisibility(): void {
-  for (const [id, vehicle] of vehiclesById) {
-    const marker = markers.get(id);
-    if (!marker) continue;
-    const want = shouldShow(vehicle);
-    const onMap = map.hasLayer(marker);
-    if (want && !onMap) marker.addTo(map);
-    if (!want && onMap) map.removeLayer(marker);
-  }
-}
-
 export function handleSnapshot(vehicles: Vehicle[]): void {
   const incomingIds = new Set(vehicles.map((v) => v.id));
   // Snapshot the keys first — removeVehicle mutates vehiclesById.
@@ -144,5 +143,5 @@ export function handleSnapshot(vehicles: Vehicle[]): void {
 // can't leave stale entries around.
 export function clearAll(): void {
   for (const id of [...vehiclesById.keys()]) removeVehicle(id);
-  installCull(reconcileMarkers);
+  installCull(refreshVisibility);
 }

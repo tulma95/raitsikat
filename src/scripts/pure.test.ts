@@ -11,14 +11,15 @@ describe("decodePolyline", () => {
 });
 
 describe("formatDeparture", () => {
+  const labels = { now: "now", inMin: "in {n} min" };
   it("returns em-dash when more than 30s in the past", () => {
-    assert.equal(formatDeparture(0, 60_000), "—");
+    assert.equal(formatDeparture(0, 60_000, labels), "—");
   });
   it("returns 'now' near zero", () => {
-    assert.equal(formatDeparture(0, 0), "now");
+    assert.equal(formatDeparture(0, 0, labels), "now");
   });
   it("rounds future to minutes", () => {
-    assert.equal(formatDeparture(120_000, 0), "in 2 min");
+    assert.equal(formatDeparture(120_000, 0, labels), "in 2 min");
   });
 });
 

@@ -62,6 +62,12 @@ export function startRouteCache(opts: RouteCacheOptions): RouteCacheHandle {
           const routes = await digitransit.listRoutes(opts.mode);
           knownRouteIds.clear();
           for (const r of routes) knownRouteIds.add(r.id);
+          // Drop cached polylines for routes that no longer exist, so the
+          // cache doesn't grow unbounded as HSL retires/renames route ids.
+          for (const k of cache.keys()) {
+            const routeId = k.slice(0, k.lastIndexOf("/"));
+            if (!knownRouteIds.has(routeId)) cache.delete(k);
+          }
           for (const route of routes) {
             for (const dir of [1, 2] as const) {
               try {

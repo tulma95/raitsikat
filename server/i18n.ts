@@ -38,6 +38,9 @@ export interface Strings {
   unknownStop: string;
   reconnecting: string;
   offline: string;
+  // Departure countdown. `departureInMin` carries a `{n}` minutes placeholder.
+  departureNow: string;
+  departureInMin: string;
 }
 
 // Per-(locale × mode) SEO strings. These differ between the tram and bus
@@ -67,6 +70,8 @@ export const CLIENT_KEYS = [
   "unknownStop",
   "reconnecting",
   "offline",
+  "departureNow",
+  "departureInMin",
 ] as const satisfies readonly (keyof Strings)[];
 
 export type ClientKey = (typeof CLIENT_KEYS)[number];
@@ -92,6 +97,8 @@ const fi: Strings = {
   unknownStop: "Tuntematon pysäkki",
   reconnecting: "Yhdistetään uudelleen…",
   offline: "Yhteyttä ei ole",
+  departureNow: "nyt",
+  departureInMin: "{n} min",
 };
 
 const en: Strings = {
@@ -114,6 +121,8 @@ const en: Strings = {
   unknownStop: "Unknown stop",
   reconnecting: "Reconnecting to live feed…",
   offline: "Offline — waiting for connection",
+  departureNow: "now",
+  departureInMin: "in {n} min",
 };
 
 export const translations: Record<Locale, Strings> = { fi, en };
@@ -216,5 +225,7 @@ export function pickClientStrings(s: Strings): ClientStrings {
     unknownStop: s.unknownStop,
     reconnecting: s.reconnecting,
     offline: s.offline,
+    departureNow: s.departureNow,
+    departureInMin: s.departureInMin,
   };
 }

@@ -18,15 +18,32 @@ interface Client {
   writeEvent: (event: string, data: unknown) => void;
 }
 
+// We broadcast the full vehicle firehose to every client (the client culls by
+// viewport, the server doesn't). A consumer that can't keep up would otherwise
+// accumulate unbounded buffered writes in Node's heap, since res.write() never
+// rejects — it just buffers. Drop any client whose socket buffer crosses this
+// cap; EventSource will reconnect and get a fresh snapshot.
+const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
+
 export function startSseServer(opts: SseServerOptions): SseServerHandle {
   const path = opts.path ?? "/events";
   const heartbeatMs = opts.heartbeatMs ?? 15_000;
   const clients = new Set<Client>();
 
+  const drop = (client: Client) => {
+    clients.delete(client);
+    try {
+      client.res.end();
+    } catch {
+      // already torn down
+    }
+  };
+
   const broadcast = (event: string, data: unknown) => {
     for (const client of clients) {
       try {
         client.writeEvent(event, data);
+        if (client.res.writableLength > MAX_BUFFERED_BYTES) drop(client);
       } catch {
         clients.delete(client);
       }

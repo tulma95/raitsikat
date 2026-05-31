@@ -60,9 +60,21 @@ export function interpolate(anim: Anim, now: number): [number, number] {
   ];
 }
 
-export function formatDeparture(departureAt: number, now: number): string {
+// Locale strings are passed in so this stays pure (no i18n import). `inMin`
+// is a template with a `{n}` placeholder, e.g. "in {n} min" / "{n} min". The
+// past em-dash is locale-neutral, so it's not parameterized.
+export interface DepartureLabels {
+  now: string;
+  inMin: string;
+}
+
+export function formatDeparture(
+  departureAt: number,
+  now: number,
+  labels: DepartureLabels,
+): string {
   const ms = departureAt - now;
   if (ms < -30_000) return "—";
-  if (ms < 30_000) return "now";
-  return `in ${Math.round(ms / 60_000)} min`;
+  if (ms < 30_000) return labels.now;
+  return labels.inMin.replace("{n}", String(Math.round(ms / 60_000)));
 }

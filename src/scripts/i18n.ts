@@ -1,10 +1,10 @@
 // Runtime UI strings, injected by the server into `window.__i18n` ahead
-// of any module script (see `server/localized-index.ts`).
+// of any module script (see the inline script in `BaseLayout.astro`).
 //
 // No fallback dict on purpose — if `window.__i18n` is missing it means
-// `index.html` was served raw by something other than the localized
-// router, and we want that to fail loud rather than silently render
-// stale Finnish strings that drift from `server/i18n.ts`.
+// the page was served raw by something other than the Astro layout, and
+// we want that to fail loud rather than silently render stale Finnish
+// strings that drift from `server/i18n.ts`.
 
 const injected = window.__i18n;
 if (!injected || typeof injected !== "object" || !injected.strings) {

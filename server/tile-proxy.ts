@@ -7,7 +7,7 @@ import type { Logger } from "./logger.ts";
 const ALLOWED_STYLES = new Set(["hsl-map"]);
 
 // Server-side coordinate bounds. MIN_ZOOM is 11 because the client's
-// Leaflet config in public/js/map.js sets `zoomOffset: -1` with a view
+// Leaflet config in src/scripts/map.ts sets `zoomOffset: -1` with a view
 // minZoom of 12, so the lowest tile zoom actually requested upstream
 // is 11. MAX_ZOOM mirrors the client's maxZoom. Out-of-range
 // coordinates are rejected before we burn upstream quota.
@@ -153,13 +153,15 @@ async function handleTile(
   const cacheKey = `${wantWebp ? "webp" : "png"}:${tilePath}`;
 
   // Vary so a shared cache (CDN, intermediary) keeps WebP and PNG
-  // variants apart for clients that disagree on Accept.
+  // variants apart for clients that disagree on Accept. The long
+  // Cache-Control is set per success path below — never on an error
+  // response, or a transient upstream 502/404 would be cached for a day.
   res.setHeader("Vary", "Accept");
-  res.setHeader("Cache-Control", "public, max-age=86400");
 
   const cached = cacheGet(cacheKey);
   if (cached) {
     res.status(200);
+    res.setHeader("Cache-Control", "public, max-age=86400");
     res.setHeader("Content-Type", cached.contentType);
     res.send(cached.body);
     return;
@@ -183,6 +185,7 @@ async function handleTile(
     return;
   }
   res.status(200);
+  res.setHeader("Cache-Control", "public, max-age=86400");
   res.setHeader("Content-Type", result.tile.contentType);
   res.send(result.tile.body);
 }

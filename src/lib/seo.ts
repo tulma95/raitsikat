@@ -1,4 +1,4 @@
-// SEO helpers ported verbatim from server/localized-index.ts. The locale
+// SEO helpers consumed by BaseLayout.astro and sitemap.xml.ts. The locale
 // dict in server/i18n.ts remains the single source of truth; this module
 // only owns the escape treatment, JSON-LD shape, and sitemap rendering.
 

@@ -75,7 +75,10 @@ function renderDepartures(list: HTMLElement, departures: Departure[]): void {
 
     const time = document.createElement("span");
     time.className = "tram-stop-popup__time";
-    time.textContent = formatDeparture(Number(d.departureAt), now);
+    time.textContent = formatDeparture(Number(d.departureAt), now, {
+      now: t("departureNow"),
+      inMin: t("departureInMin"),
+    });
     row.appendChild(time);
 
     list.appendChild(row);
