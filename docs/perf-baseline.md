@@ -98,3 +98,30 @@ profile. All four batches applied (uncommitted on `main`).
 - After pan + pan + zoom-in: p95 **9.3 ms**, max **75.9 ms**, longTaskCount **1** (70 ms)
 - activeMarkerCount after gesture: **20** (pan + zoom moved the map and culled further)
 - Pass: p95 ≤ 33 ms target met by 3.5×; one expected reconcile spike during the zoom.
+
+### 2026-05-31 post-Astro-bundling (localhost)
+
+Captured from `http://localhost:3000/` after the Astro migration: the shell
+is SSR'd by Astro (middleware mode) and the client is now TypeScript bundled
+by Astro/Vite (no more unbundled `public/js` + hand-written modulepreload
+list). Same mobile emulation profile. Compared to the 2026-05-16 localhost
+post-all-batches run.
+
+**Scenario 1 — Cold load** (DevTools performance trace, reload)
+- LCP: **1423 ms** (Δ **−384 ms** vs 1807 ms; passes <2000 ms target). Breakdown:
+  TTFB 2 ms, load-delay 1353 ms, load-duration 1 ms, render-delay 67 ms.
+- Render-blocking requests: **2** (Δ −1) — `/style.css` and the bundled
+  `_astro/vehicles.*.css` (Leaflet's CSS, now imported in `map.ts`). Chrome
+  estimates 0 ms FCP/LCP savings from them.
+- Critical chain (longest): `/ → _astro/<entry>.js → _astro/vehicles.*.js
+  (app + Leaflet) → /bus/stops + analytics`; max critical-path latency
+  **1999 ms**, depth ~4 (passes ≤6). Note: bundling reintroduced one JS hop —
+  the entry loads, then discovers the shared `vehicles` chunk — because Astro
+  does not auto-emit a `<link rel=modulepreload>` for a bundled `<script>`'s
+  sub-chunks. The hashed chunk name rules out a hand-written preload; flattening
+  it would need a Vite chunking/preload tweak. LCP is unaffected (text element,
+  render-delay only 67 ms); the hop delays time-to-first-markers, not LCP.
+- CLS: **0.08** (Δ +0.03 vs 0.05; still under the 0.1 good threshold).
+
+Scenarios 2 + 3 (runtime frame timings via `?perf=1`) unchanged by this work —
+the hot-path code is the same, only its packaging changed — so not re-run here.
