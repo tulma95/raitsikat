@@ -7,10 +7,12 @@
 // notifications for every parsed event. Kept on a global because perf.js
 // loads lazily and we don't want to import it eagerly.
 
-import { handleSnapshot, upsertVehicle, removeVehicle } from "./vehicles.js";
-import { trackConnection } from "./connection.js";
+import { handleSnapshot, upsertVehicle, removeVehicle } from "./vehicles.ts";
+import { trackConnection } from "./connection.ts";
+import type { Mode } from "../../server/types.ts";
+import type { SnapshotEvent, UpdateEvent, RemoveEvent } from "./types.ts";
 
-function safeParse(data) {
+function safeParse(data: string): unknown {
   try {
     return JSON.parse(data);
   } catch {
@@ -18,36 +20,36 @@ function safeParse(data) {
   }
 }
 
-function notePerf(kind, byteLen, count) {
+function notePerf(kind: string, byteLen: number, count: number): void {
   const hooks = window.__perfHooks;
   if (!hooks) return;
   hooks.note(kind, byteLen, count);
 }
 
-export function connect(mode) {
+export function connect(mode: Mode): EventSource {
   const es = new EventSource(`/${mode}/events`);
   trackConnection(es);
   es.addEventListener("snapshot", (ev) => {
-    /** @type {import("./types.js").SnapshotEvent | null} */
-    const parsed = safeParse(ev.data);
+    const data = (ev as MessageEvent).data as string;
+    const parsed = safeParse(data) as SnapshotEvent | null;
     if (parsed && Array.isArray(parsed.vehicles)) {
-      notePerf("snapshot", ev.data.length, parsed.vehicles.length);
+      notePerf("snapshot", data.length, parsed.vehicles.length);
       handleSnapshot(parsed.vehicles);
     }
   });
   es.addEventListener("update", (ev) => {
-    /** @type {import("./types.js").UpdateEvent | null} */
-    const parsed = safeParse(ev.data);
+    const data = (ev as MessageEvent).data as string;
+    const parsed = safeParse(data) as UpdateEvent | null;
     if (parsed && parsed.vehicle) {
-      notePerf("update", ev.data.length, 1);
+      notePerf("update", data.length, 1);
       upsertVehicle(parsed.vehicle);
     }
   });
   es.addEventListener("remove", (ev) => {
-    /** @type {import("./types.js").RemoveEvent | null} */
-    const parsed = safeParse(ev.data);
+    const data = (ev as MessageEvent).data as string;
+    const parsed = safeParse(data) as RemoveEvent | null;
     if (parsed && typeof parsed.id === "string") {
-      notePerf("remove", ev.data.length, 1);
+      notePerf("remove", data.length, 1);
       removeVehicle(parsed.id);
     }
   });

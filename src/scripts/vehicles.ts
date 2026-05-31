@@ -3,23 +3,25 @@
 // `vehiclesById` is the canonical model of "what trams exist right now";
 // `markers` is the Leaflet-side view layer. They share keys (vehicle.id).
 
-import { map } from "./map.js";
-import { animateTo, stopAnimating } from "./animation.js";
-import { escapeAttr } from "./pure.js";
-import { ensureLineChip, isolateLine, isVisible, updateCount, noteUpsert, noteRemove } from "./filter.js";
-import { isInView, install as installCull } from "./viewport-cull.js";
+import L from "leaflet";
+import { map } from "./map.ts";
+import { animateTo, stopAnimating } from "./animation.ts";
+import type { VehicleMarker } from "./animation.ts";
+import { escapeAttr } from "./pure.ts";
+import { ensureLineChip, isolateLine, isVisible, updateCount, noteUpsert, noteRemove } from "./filter.ts";
+import { isInView, install as installCull } from "./viewport-cull.ts";
+import type { Vehicle } from "./types.ts";
 
-/** @type {Map<string, import("./types.js").Vehicle>} */
-export const vehiclesById = new Map();
-const markers = new Map();
+export const vehiclesById = new Map<string, Vehicle>();
+const markers = new Map<string, VehicleMarker>();
 
-function shouldShow(vehicle) {
+function shouldShow(vehicle: Vehicle): boolean {
   return isVisible(vehicle.line) && isInView(vehicle.lat, vehicle.lon);
 }
 
-// Install the moveend/zoomend listener once. The callback walks every known
-// vehicle and reconciles its marker's on-map state.
-installCull(() => {
+// Walk every known vehicle and reconcile its marker's on-map state against
+// the current filter + viewport. Used as the viewport-cull callback.
+function reconcileMarkers(): void {
   for (const [id, vehicle] of vehiclesById) {
     const marker = markers.get(id);
     if (!marker) continue;
@@ -28,9 +30,12 @@ installCull(() => {
     if (want && !onMap) marker.addTo(map);
     else if (!want && onMap) map.removeLayer(marker);
   }
-});
+}
 
-function makeIcon(vehicle) {
+// Install the moveend/zoomend listener once.
+installCull(reconcileMarkers);
+
+function makeIcon(vehicle: Vehicle): L.DivIcon {
   const heading = Number(vehicle.heading) || 0;
   const line = escapeAttr(vehicle.line);
   return L.divIcon({
@@ -46,10 +51,10 @@ function makeIcon(vehicle) {
 }
 
 // Update an existing marker's DOM in place — no icon rebuild, no animation replay.
-function updateMarkerInPlace(marker, vehicle) {
+function updateMarkerInPlace(marker: VehicleMarker, vehicle: Vehicle): boolean {
   const root = marker._icon && marker._icon.firstElementChild;
   if (!root) return false; // not yet attached; caller will create fresh
-  const arrow = root.firstElementChild;
+  const arrow = root.firstElementChild as HTMLElement | null;
   const label = root.lastElementChild;
   const heading = Number(vehicle.heading) || 0;
   if (arrow && marker._lastHeading !== heading) {
@@ -64,7 +69,7 @@ function updateMarkerInPlace(marker, vehicle) {
   return true;
 }
 
-export function upsertVehicle(vehicle) {
+export function upsertVehicle(vehicle: Vehicle): void {
   const prev = vehiclesById.get(vehicle.id);
   const prevLine = prev ? prev.line : null;
   vehiclesById.set(vehicle.id, vehicle);
@@ -73,14 +78,15 @@ export function upsertVehicle(vehicle) {
 
   let marker = markers.get(vehicle.id);
   if (!marker) {
-    marker = L.marker([vehicle.lat, vehicle.lon], { icon: makeIcon(vehicle) });
+    marker = L.marker([vehicle.lat, vehicle.lon], { icon: makeIcon(vehicle) }) as VehicleMarker;
     marker.on("click", () => isolateLine(vehiclesById.get(vehicle.id) ?? vehicle));
     markers.set(vehicle.id, marker);
     // Attach BEFORE addTo: Leaflet fires `add` synchronously inside addTo,
     // so a listener attached after would miss the event and never strip the
     // one-shot enter class.
-    marker.once("add", () => {
-      const root = marker._icon && marker._icon.firstElementChild;
+    const m = marker;
+    m.once("add", () => {
+      const root = m._icon && m._icon.firstElementChild;
       if (!root) return;
       root.addEventListener(
         "animationend",
@@ -100,7 +106,7 @@ export function upsertVehicle(vehicle) {
   updateCount();
 }
 
-export function removeVehicle(id) {
+export function removeVehicle(id: string): void {
   const v = vehiclesById.get(id);
   const marker = markers.get(id);
   if (marker) {
@@ -113,7 +119,7 @@ export function removeVehicle(id) {
   updateCount();
 }
 
-export function refreshVisibility() {
+export function refreshVisibility(): void {
   for (const [id, vehicle] of vehiclesById) {
     const marker = markers.get(id);
     if (!marker) continue;
@@ -124,7 +130,7 @@ export function refreshVisibility() {
   }
 }
 
-export function handleSnapshot(vehicles) {
+export function handleSnapshot(vehicles: Vehicle[]): void {
   const incomingIds = new Set(vehicles.map((v) => v.id));
   // Snapshot the keys first — removeVehicle mutates vehiclesById.
   for (const id of [...vehiclesById.keys()]) {
@@ -136,16 +142,7 @@ export function handleSnapshot(vehicles) {
 // Drop every marker and clear the model. Used on mode switch — the new mode
 // brings its own snapshot, and tram + bus vehicle ids can collide so we
 // can't leave stale entries around.
-export function clearAll() {
+export function clearAll(): void {
   for (const id of [...vehiclesById.keys()]) removeVehicle(id);
-  installCull(() => {
-    for (const [id, vehicle] of vehiclesById) {
-      const marker = markers.get(id);
-      if (!marker) continue;
-      const want = shouldShow(vehicle);
-      const onMap = map.hasLayer(marker);
-      if (want && !onMap) marker.addTo(map);
-      else if (!want && onMap) map.removeLayer(marker);
-    }
-  });
+  installCull(reconcileMarkers);
 }

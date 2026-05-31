@@ -6,9 +6,11 @@
 // teardown + reconnect because the steps need a strict order (save selection,
 // flip mode, clear DOM, reload selection, reconnect SSE).
 
+import type { Mode } from "../../server/types.ts";
+
 const MODE_STORAGE_KEY = "raitsikat.activeMode";
 
-function readStored() {
+function readStored(): Mode {
   try {
     const v = localStorage.getItem(MODE_STORAGE_KEY);
     if (v === "tram" || v === "bus") return v;
@@ -16,9 +18,9 @@ function readStored() {
   return "tram";
 }
 
-export let activeMode = readStored();
+export let activeMode: Mode = readStored();
 
-export function setActiveMode(mode) {
+export function setActiveMode(mode: Mode): void {
   if (mode !== "tram" && mode !== "bus") return;
   activeMode = mode;
   try {

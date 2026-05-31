@@ -158,8 +158,9 @@ No automated coverage here since the migration — these are the manual checks.
    valid JSON, `@type` `WebApplication`, `inLanguage` matches the page locale,
    `url`/`screenshot` use `SITE_ORIGIN`.
 5. The inline `window.__i18n` script appears in `<head>` **before** the
-   `/js/main.js` module script, with the right `locale`. (If it's missing or
-   ordered after, `public/js/i18n.js` throws and the app won't boot.)
+   Astro-bundled module script (`/_astro/*.js`), with the right `locale`. (If
+   it's missing or ordered after, `src/scripts/i18n.ts` throws and the app
+   won't boot.)
 6. `curl -s localhost:3000/sitemap.xml` → two `<url>` entries (`/`, `/en`),
    each with all three `xhtml:link` alternates (fi/en/x-default), short locale
    codes (`fi`/`en`, not `fi-FI`), no `lastmod`/`changefreq`/`priority`.
@@ -170,9 +171,11 @@ No automated coverage here since the migration — these are the manual checks.
 
 If `server/types.ts` changed:
 
-1. `public/js/types.js` mirror updated.
+1. `npx astro check` — the client imports `Vehicle` from `server/types.ts`
+   (via `src/scripts/types.ts`), so a wire rename now surfaces as a type
+   error at build instead of needing a hand-synced mirror.
 2. Open the map, watch the browser console for "undefined" reads on
-   `vehicle.*` — JSDoc won't catch a missed rename at runtime.
+   `vehicle.*` in case a field was renamed without updating a usage.
 
 ## Pure functions
 

@@ -97,15 +97,20 @@ The shared mechanics live in `cache-helpers.ts`:
 
 ## Frontend wiring
 
-Plain ES modules under `public/js/`, loaded via `<script type="module">`.
-**Astro does not bundle them.** The layout references them as
-`is:inline` script tags pointing at raw `/js/*` paths, so Astro leaves
-them untouched and Express serves them verbatim from `public/`. This is
-deliberate: the `filter.js` ↔ `vehicles.js` live-binding cycle (below)
-and Leaflet-as-a-global both rely on the modules loading as-authored,
-which a bundler's tree-shaking / scope-hoisting would break. Leaflet is
-a global from `/vendor/leaflet/leaflet.js` (self-hosted from
-`node_modules`).
+TypeScript modules under `src/scripts/`, **bundled by Astro (Vite)**.
+`BaseLayout.astro` has a single bundled entry — `<script>import
+"../scripts/main.ts"</script>` (no `is:inline`) — and Astro hashes the
+output, code-splits it, and injects the module script (no hand-written
+`modulepreload` list needed; the static graph is one hop deep so there's
+no waterfall to flatten). Leaflet is a normal import (`import L from
+"leaflet"`) bundled in, and `map.ts` does `import "leaflet/dist/leaflet.css"`
+so Astro emits the hashed stylesheet — no `/vendor/leaflet` mount.
+`perf.ts` is loaded via dynamic `import()` so Vite splits it into its own
+chunk fetched only on `?perf=1`.
+
+The bundler preserves ES live bindings, so the cycles and mutable shared
+flags below survive bundling — they're still invariants, just no longer
+fragile against a "don't bundle" rule.
 
 **Cycle between `filter.js` ↔ `vehicles.js`.** Both import from each
 other. This works because the imports are referenced only inside function
@@ -157,10 +162,11 @@ these — `updateCount` reads `shownCount` directly and never walks
 `vehiclesById`. When visibility flips for many lines at once (chip
 toggles, `isolateLine`, mode reload), call `recomputeShown()`.
 
-**`?perf=1` probe.** `perf.js` loads only when the query param is
-present and exposes `window.__perf.snapshot()` (SSE update rate, frame
-timings, longtasks, active marker count). Measurement procedure +
-mobile baseline numbers in `docs/perf-baseline.md`.
+**`?perf=1` probe.** `perf.ts` is dynamically imported (its own Vite
+chunk) only when the query param is present, and exposes
+`window.__perf.snapshot()` (SSE update rate, frame timings, longtasks,
+active marker count). Measurement procedure + mobile baseline numbers in
+`docs/perf-baseline.md`.
 
 ## Logging
 
@@ -185,6 +191,9 @@ but it bypasses level gating and structured output.
 
 ## Shared wire types
 
-`server/types.ts` is the source of truth. `public/js/types.js` is a
-JSDoc-only mirror (emits no runtime code). When the wire format changes,
-update both.
+`server/types.ts` is the source of truth. The client imports `Vehicle`
+straight from it (`src/scripts/types.ts` re-exports it), so that type
+can't drift. `src/scripts/types.ts` also defines the client-only wire
+shapes — `SnapshotEvent` / `UpdateEvent` / `RemoveEvent`, `TramStop`, and
+`Departure` (deliberately without the server-only `headsign`). There's no
+JSDoc mirror to keep in sync anymore.

@@ -9,37 +9,39 @@
 // `raitsikat.lineSelection.<mode>` so flipping between trams and buses
 // preserves each side's isolations.
 
-import { filterEl, countEls } from "./dom.js";
-import { clearRoute, showRoute } from "./route-overlay.js";
-import { escapeAttr } from "./pure.js";
-import { vehiclesById, refreshVisibility } from "./vehicles.js";
-import { activeMode } from "./mode.js";
-import { vehicleCountLabel } from "./i18n.js";
+import { filterEl, countEls } from "./dom.ts";
+import { clearRoute, showRoute } from "./route-overlay.ts";
+import { escapeAttr } from "./pure.ts";
+import { vehiclesById, refreshVisibility } from "./vehicles.ts";
+import { activeMode } from "./mode.ts";
+import { vehicleCountLabel } from "./i18n.ts";
+import type { Mode } from "../../server/types.ts";
+import type { Vehicle } from "./types.ts";
 
-export const enabledLines = new Set();
+export const enabledLines = new Set<string>();
 export let allLinesEnabledByDefault = true;
 
 // Per-line vehicle count, and the running count of vehicles whose line is
 // currently visible. Maintained incrementally by noteUpsert / noteRemove so
 // updateCount() never has to walk vehiclesById.
-const linesCount = new Map(); // line -> number
+const linesCount = new Map<string, number>(); // line -> number
 let shownCount = 0;
 
 // Set of lines we've ever rendered a chip for. Replaces the per-upsert
 // querySelector in ensureLineChip().
-const seenLines = new Set();
+const seenLines = new Set<string>();
 
 let chipSortQueued = false;
 
-function queueChipSort() {
+function queueChipSort(): void {
   if (chipSortQueued) return;
   chipSortQueued = true;
   requestAnimationFrame(() => {
     chipSortQueued = false;
     const chips = Array.from(filterEl.querySelectorAll(".chip"));
     chips.sort((a, b) =>
-      a.getAttribute("data-line").localeCompare(
-        b.getAttribute("data-line"),
+      a.getAttribute("data-line")!.localeCompare(
+        b.getAttribute("data-line")!,
         undefined,
         { numeric: true },
       ),
@@ -49,13 +51,13 @@ function queueChipSort() {
 }
 
 const SELECTION_STORAGE_PREFIX = "raitsikat.lineSelection";
-const selectionKey = (mode) => `${SELECTION_STORAGE_PREFIX}.${mode}`;
+const selectionKey = (mode: Mode) => `${SELECTION_STORAGE_PREFIX}.${mode}`;
 
-function modeLabel(mode) {
+function modeLabel(mode: Mode): string {
   return vehicleCountLabel(mode);
 }
 
-function loadSelection() {
+function loadSelection(): void {
   enabledLines.clear();
   allLinesEnabledByDefault = true;
   try {
@@ -71,7 +73,7 @@ function loadSelection() {
 
 loadSelection();
 
-function saveSelection() {
+function saveSelection(): void {
   try {
     // Intersect with the chips actually rendered so retired HSL lines don't
     // accumulate forever in localStorage.
@@ -88,13 +90,13 @@ function saveSelection() {
   } catch {}
 }
 
-export function isVisible(line) {
+export function isVisible(line: string): boolean {
   return allLinesEnabledByDefault || enabledLines.has(line);
 }
 
 let countQueued = false;
 
-export function updateCount() {
+export function updateCount(): void {
   if (countQueued) return;
   countQueued = true;
   requestAnimationFrame(() => {
@@ -109,7 +111,7 @@ export function updateCount() {
 }
 
 // Called from vehicles.js::upsertVehicle. prevLine is null on first insert.
-export function noteUpsert(prevLine, nextLine) {
+export function noteUpsert(prevLine: string | null, nextLine: string): void {
   if (prevLine === nextLine) return;
   if (prevLine !== null) {
     const prev = (linesCount.get(prevLine) ?? 0) - 1;
@@ -122,7 +124,7 @@ export function noteUpsert(prevLine, nextLine) {
 }
 
 // Called from vehicles.js::removeVehicle.
-export function noteRemove(line) {
+export function noteRemove(line: string): void {
   const next = (linesCount.get(line) ?? 0) - 1;
   if (next <= 0) linesCount.delete(line);
   else linesCount.set(line, next);
@@ -133,7 +135,7 @@ export function noteRemove(line) {
 // every vehicle) and called from the rare paths where visibility flips for
 // many lines at once: refreshVisibility, isolateLine, chip-change handlers,
 // reloadForActiveMode.
-function recomputeShown() {
+function recomputeShown(): void {
   let n = 0;
   for (const [line, count] of linesCount) {
     if (isVisible(line)) n += count;
@@ -143,7 +145,7 @@ function recomputeShown() {
 
 // Save current selection under the *current* mode's key, then drop chips and
 // in-memory selection state. main.js calls this before flipping `activeMode`.
-export function saveAndClear() {
+export function saveAndClear(): void {
   saveSelection();
   enabledLines.clear();
   allLinesEnabledByDefault = true;
@@ -156,14 +158,14 @@ export function saveAndClear() {
 
 // Load selection for whatever mode is currently active. main.js calls this
 // after flipping `activeMode`, before reconnecting SSE.
-export function reloadForActiveMode() {
+export function reloadForActiveMode(): void {
   loadSelection();
   updateCount();
 }
 
 // Click a tram → show only that line and draw its route. Click a tram of the
 // same (already isolated) line → reset to show everything and clear the route.
-export function isolateLine(vehicle) {
+export function isolateLine(vehicle: Vehicle): void {
   const line = vehicle.line;
   const alreadyIsolated =
     !allLinesEnabledByDefault &&
@@ -173,9 +175,9 @@ export function isolateLine(vehicle) {
   if (alreadyIsolated) {
     allLinesEnabledByDefault = true;
     for (const chip of filterEl.querySelectorAll(".chip")) {
-      const l = chip.getAttribute("data-line");
+      const l = chip.getAttribute("data-line")!;
       chip.setAttribute("data-on", "true");
-      chip.querySelector("input").checked = true;
+      chip.querySelector<HTMLInputElement>("input")!.checked = true;
       enabledLines.add(l);
     }
     clearRoute();
@@ -186,7 +188,7 @@ export function isolateLine(vehicle) {
     for (const chip of filterEl.querySelectorAll(".chip")) {
       const on = chip.getAttribute("data-line") === line;
       chip.setAttribute("data-on", String(on));
-      chip.querySelector("input").checked = on;
+      chip.querySelector<HTMLInputElement>("input")!.checked = on;
     }
     showRoute(vehicle.routeId, vehicle.directionId);
   }
@@ -196,7 +198,7 @@ export function isolateLine(vehicle) {
   saveSelection();
 }
 
-export function ensureLineChip(line) {
+export function ensureLineChip(line: string): void {
   if (seenLines.has(line)) return;
   seenLines.add(line);
 
@@ -210,7 +212,7 @@ export function ensureLineChip(line) {
     <input type="checkbox" value="${escapeAttr(line)}" ${on ? "checked" : ""} />
     <span>${escapeAttr(line)}</span>
   `;
-  const cb = chip.querySelector("input");
+  const cb = chip.querySelector<HTMLInputElement>("input")!;
   cb.addEventListener("change", () => {
     const chips = filterEl.querySelectorAll(".chip");
     // Clicking any chip while every line is shown isolates that one line,
@@ -234,7 +236,7 @@ export function ensureLineChip(line) {
       for (const c of chips) {
         const isThis = c.getAttribute("data-line") === line;
         c.setAttribute("data-on", String(isThis));
-        c.querySelector("input").checked = isThis;
+        c.querySelector<HTMLInputElement>("input")!.checked = isThis;
       }
       // Match tram-marker click: draw the isolated line's route if we have
       // a vehicle currently on it. If not, leave the route cleared.
@@ -245,8 +247,8 @@ export function ensureLineChip(line) {
       allLinesEnabledByDefault = true;
       for (const c of chips) {
         c.setAttribute("data-on", "true");
-        c.querySelector("input").checked = true;
-        enabledLines.add(c.getAttribute("data-line"));
+        c.querySelector<HTMLInputElement>("input")!.checked = true;
+        enabledLines.add(c.getAttribute("data-line")!);
       }
     } else {
       allLinesEnabledByDefault = false;

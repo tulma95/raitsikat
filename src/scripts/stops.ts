@@ -6,17 +6,20 @@
 // /departures?id=<id> on every open. Stop interactions are independent of
 // the chip filter / line-isolation state.
 
-import { map, stopsLayer } from "./map.js";
-import { formatDeparture } from "./pure.js";
-import { activeMode } from "./mode.js";
-import { t } from "./i18n.js";
+import L from "leaflet";
+import { map, stopsLayer } from "./map.ts";
+import { formatDeparture } from "./pure.ts";
+import { activeMode } from "./mode.ts";
+import { t } from "./i18n.ts";
+import type { Mode } from "../../server/types.ts";
+import type { TramStop, Departure } from "./types.ts";
 
 // Hide departures further than this in the future. The popup's row count is
 // bounded server-side (numberOfDepartures: 6 in digitransit-client.ts); the
 // client only narrows by this horizon so the user sees catchable trips.
 const DEPARTURE_HORIZON_MS = 15 * 60_000;
 
-function buildStopPopupRoot(stop) {
+function buildStopPopupRoot(stop: TramStop): HTMLElement {
   const root = document.createElement("div");
   root.className = "tram-stop-popup";
 
@@ -39,7 +42,7 @@ function buildStopPopupRoot(stop) {
   return root;
 }
 
-function renderPlaceholder(list, text) {
+function renderPlaceholder(list: HTMLElement, text: string): void {
   list.replaceChildren();
   const placeholder = document.createElement("div");
   placeholder.className = "tram-stop-popup__placeholder";
@@ -47,7 +50,7 @@ function renderPlaceholder(list, text) {
   list.appendChild(placeholder);
 }
 
-function renderDepartures(list, departures) {
+function renderDepartures(list: HTMLElement, departures: Departure[]): void {
   list.replaceChildren();
   const now = Date.now();
   const visible = (departures ?? []).filter((d) => {
@@ -82,14 +85,14 @@ function renderDepartures(list, departures) {
 // shrink relative to the map as the user zooms in. Step up the radius (and
 // the ring weight proportionally) so a stop looks like the same physical
 // thing on the ground at every zoom level we show it at.
-function radiusForZoom(zoom) {
+function radiusForZoom(zoom: number): number {
   return 4 + Math.max(0, zoom - 14) * 1.5;
 }
-function weightForZoom(zoom) {
+function weightForZoom(zoom: number): number {
   return 1.5 + Math.max(0, zoom - 14) * 0.25;
 }
 
-function buildStopMarker(stop, mode) {
+function buildStopMarker(stop: TramStop, mode: Mode): L.CircleMarker {
   // Cream fill + dark ring reads as "transit stop" against both the dark
   // toned tiles and any lighter regions (parks, water labels). Small enough
   // to stay visual furniture; the ring keeps it legible at any zoom.
@@ -122,9 +125,9 @@ function buildStopMarker(stop, mode) {
   );
 
   marker.on("popupopen", (ev) => {
-    const popupEl = ev.popup.getElement();
+    const popupEl = (ev as L.PopupEvent).popup.getElement();
     if (!popupEl) return;
-    const list = popupEl.querySelector(".tram-stop-popup__list");
+    const list = popupEl.querySelector<HTMLElement>(".tram-stop-popup__list");
     if (!list) return;
 
     renderPlaceholder(list, t("loading"));
@@ -145,7 +148,7 @@ function buildStopMarker(stop, mode) {
   return marker;
 }
 
-function syncStopLayer() {
+function syncStopLayer(): void {
   const zoom = map.getZoom();
   const shouldShow = zoom >= 14;
   if (shouldShow && !map.hasLayer(stopsLayer)) stopsLayer.addTo(map);
@@ -154,8 +157,9 @@ function syncStopLayer() {
   const radius = radiusForZoom(zoom);
   const weight = weightForZoom(zoom);
   stopsLayer.eachLayer((m) => {
-    m.setRadius(radius);
-    m.setStyle({ weight });
+    const cm = m as L.CircleMarker;
+    cm.setRadius(radius);
+    cm.setStyle({ weight });
   });
 }
 
@@ -164,7 +168,7 @@ function syncStopLayer() {
 // who lands during the cold-boot window doesn't have to refresh.
 const STOPS_RETRY_DELAY_MS = 30_000;
 
-function loadStops(mode, retried) {
+function loadStops(mode: Mode, retried: boolean): void {
   fetch(`/${mode}/stops`)
     .then((res) => (res.ok ? res.json() : []))
     .then((stops) => {
@@ -193,13 +197,13 @@ function loadStops(mode, retried) {
 
 // Drop every stop marker. Used on mode switch — the next initStops() pulls
 // the new mode's stop set.
-export function clearStops() {
+export function clearStops(): void {
   stopsLayer.clearLayers();
 }
 
 let zoomHandlerInstalled = false;
 
-export function initStops() {
+export function initStops(): void {
   if (!zoomHandlerInstalled) {
     map.on("zoomend", syncStopLayer);
     zoomHandlerInstalled = true;

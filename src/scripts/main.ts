@@ -1,19 +1,20 @@
 // Entry point. Wires the mode tab control and orchestrates teardown +
 // reconnect when the user switches between trams and buses.
 
-import { sheetEl, modeTabsEl } from "./dom.js";
-import { initStops, clearStops } from "./stops.js";
-import { connect } from "./sse.js";
-import { activeMode, setActiveMode } from "./mode.js";
-import { saveAndClear, reloadForActiveMode } from "./filter.js";
-import { clearAll as clearVehicles } from "./vehicles.js";
-import { clearRoute } from "./route-overlay.js";
-import { initUserLocation } from "./location.js";
-import { reset as resetCull } from "./viewport-cull.js";
+import { sheetEl, modeTabsEl } from "./dom.ts";
+import { initStops, clearStops } from "./stops.ts";
+import { connect } from "./sse.ts";
+import { activeMode, setActiveMode } from "./mode.ts";
+import { saveAndClear, reloadForActiveMode } from "./filter.ts";
+import { clearAll as clearVehicles } from "./vehicles.ts";
+import { clearRoute } from "./route-overlay.ts";
+import { initUserLocation } from "./location.ts";
+import { reset as resetCull } from "./viewport-cull.ts";
+import type { Mode } from "../../server/types.ts";
 
 // Opt-in perf probe. Loaded before SSE connects so the snapshot is counted.
 if (new URLSearchParams(location.search).has("perf")) {
-  await import("./perf.js");
+  await import("./perf.ts");
 }
 
 // Keep Leaflet's bottom controls (zoom + attribution) clear of the chip tray
@@ -27,22 +28,22 @@ const syncSheetHeight = () => {
 new ResizeObserver(syncSheetHeight).observe(sheetEl);
 syncSheetHeight();
 
-function syncTabUi() {
+function syncTabUi(): void {
   for (const btn of modeTabsEl.querySelectorAll('[role="tab"]')) {
     const selected = btn.getAttribute("data-mode") === activeMode;
     btn.setAttribute("aria-selected", String(selected));
   }
 }
 
-let currentEs = null;
+let currentEs: EventSource | null = null;
 
-function startForActiveMode() {
+function startForActiveMode(): void {
   reloadForActiveMode();
   initStops();
   currentEs = connect(activeMode);
 }
 
-function switchMode(next) {
+function switchMode(next: Mode): void {
   if (next === activeMode) return;
   if (currentEs) {
     currentEs.close();
@@ -62,7 +63,7 @@ function switchMode(next) {
 }
 
 modeTabsEl.addEventListener("click", (ev) => {
-  const btn = ev.target.closest('[role="tab"][data-mode]');
+  const btn = (ev.target as Element).closest('[role="tab"][data-mode]');
   if (!btn) return;
   const next = btn.getAttribute("data-mode");
   if (next === "tram" || next === "bus") switchMode(next);

@@ -4,21 +4,22 @@
 // denial / failure is silent (the dot never appears). The dot is not tied
 // to a transit mode — it persists across tram/bus switches.
 
-import { map } from "./map.js";
+import L from "leaflet";
+import { map } from "./map.ts";
 
-let dot = null;
-let accuracyCircle = null;
-let watchId = null;
+let dot: L.CircleMarker | null = null;
+let accuracyCircle: L.Circle | null = null;
+let watchId: number | null = null;
 
-function ensurePane() {
+function ensurePane(): void {
   if (map.getPane("userLocationPane")) return;
   // Above the route overlay (400) and stops pane (350), below default
   // marker pane (600) so vehicle markers still draw on top of the user.
   map.createPane("userLocationPane");
-  map.getPane("userLocationPane").style.zIndex = 450;
+  map.getPane("userLocationPane")!.style.zIndex = "450";
 }
 
-function place(latlng, accuracy) {
+function place(latlng: L.LatLngExpression, accuracy: number): void {
   const hasAccuracy =
     typeof accuracy === "number" && isFinite(accuracy) && accuracy > 0;
 
@@ -56,7 +57,7 @@ function place(latlng, accuracy) {
   }
 }
 
-export function initUserLocation() {
+export function initUserLocation(): void {
   if (!("geolocation" in navigator)) return;
   if (watchId !== null) return;
   ensurePane();

@@ -23,12 +23,6 @@ const app = express();
 // dir; `index: false` keeps express.static from serving the stale,
 // un-templated `dist/client/index.html` for `/` (Astro must own `/`).
 app.use(express.static(join(__dirname, "..", "dist", "client"), { index: false }));
-app.use(
-  "/vendor/leaflet",
-  express.static(join(__dirname, "..", "node_modules", "leaflet", "dist"), {
-    maxAge: "1d",
-  }),
-);
 
 if (!settings.digitransitApiKey) {
   logger

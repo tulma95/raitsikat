@@ -36,6 +36,7 @@ Astro.response.headers.set("Cache-Control", "public, max-age=60, must-revalidate
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0d0f12" />
+  <meta name="generator" content={Astro.generator} />
   <title>{s.title}</title>
   <meta name="description" content={s.description}>
   <link rel="canonical" href={canonicalUrl}>
@@ -62,25 +63,8 @@ Astro.response.headers.set("Cache-Control", "public, max-age=60, must-revalidate
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="preload" as="script" href="/vendor/leaflet/leaflet.js" />
-  <link rel="modulepreload" href="/js/main.js" />
-  <link rel="modulepreload" href="/js/map.js" />
-  <link rel="modulepreload" href="/js/vehicles.js" />
-  <link rel="modulepreload" href="/js/stops.js" />
-  <link rel="modulepreload" href="/js/filter.js" />
-  <link rel="modulepreload" href="/js/sse.js" />
-  <link rel="modulepreload" href="/js/route-overlay.js" />
-  <link rel="modulepreload" href="/js/animation.js" />
-  <link rel="modulepreload" href="/js/connection.js" />
-  <link rel="modulepreload" href="/js/mode.js" />
-  <link rel="modulepreload" href="/js/location.js" />
-  <link rel="modulepreload" href="/js/dom.js" />
-  <link rel="modulepreload" href="/js/pure.js" />
-  <link rel="modulepreload" href="/js/i18n.js" />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
   <noscript><link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" /></noscript>
-  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" media="print" onload="this.media='all'" />
-  <noscript><link rel="stylesheet" href="/vendor/leaflet/leaflet.css" /></noscript>
   <link rel="stylesheet" href="/style.css" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
@@ -142,7 +126,8 @@ Astro.response.headers.set("Cache-Control", "public, max-age=60, must-revalidate
     </div>
   </section>
 
-  <script is:inline defer src="/vendor/leaflet/leaflet.js"></script>
-  <script is:inline type="module" src="/js/main.js"></script>
+  <script>
+    import "../scripts/main.ts";
+  </script>
 </body>
 </html>

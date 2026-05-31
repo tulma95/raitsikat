@@ -17,7 +17,7 @@ const { locale, strings } = injected;
 
 export const currentLocale = locale;
 
-export function t(key) {
+export function t(key: string): string {
   const value = strings[key];
   if (typeof value !== "string") {
     throw new Error(`i18n: missing translation for key "${key}"`);
@@ -27,6 +27,6 @@ export function t(key) {
 
 // "X trams" / "X ratikkaa" — no count-based inflection. Matches how HSL
 // itself phrases vehicle counts; Finnish uses partitive singular regardless.
-export function vehicleCountLabel(mode) {
+export function vehicleCountLabel(mode: string): string {
   return mode === "bus" ? t("vehicleModeBus") : t("vehicleModeTram");
 }

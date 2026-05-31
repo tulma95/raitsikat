@@ -5,15 +5,16 @@
 // fetch from an earlier click can't draw a ghost route after the user has
 // moved on (clicked another tram, hit Hide all, toggled a chip).
 
-import { map } from "./map.js";
-import { decodePolyline } from "./pure.js";
-import { activeMode } from "./mode.js";
+import L from "leaflet";
+import { map } from "./map.ts";
+import { decodePolyline } from "./pure.ts";
+import { activeMode } from "./mode.ts";
 
-let currentPath = null;
-let currentPathKey = null;
+let currentPath: L.Polyline | null = null;
+let currentPathKey: string | null = null;
 let routeRequestId = 0;
 
-export async function showRoute(routeId, dirId) {
+export async function showRoute(routeId: string, dirId: number): Promise<void> {
   if (!routeId || (dirId !== 1 && dirId !== 2)) return;
   const key = `${routeId}/${dirId}`;
   if (currentPathKey === key) return; // already showing this exact route
@@ -23,13 +24,13 @@ export async function showRoute(routeId, dirId) {
   clearRoute();
   const myRequestId = ++routeRequestId;
 
-  let polyline;
+  let polyline: string | undefined;
   try {
     const res = await fetch(
       `/${activeMode}/route?id=${encodeURIComponent(routeId)}&dir=${dirId}`,
     );
     if (!res.ok) return;
-    const body = await res.json();
+    const body: { polyline?: string } = await res.json();
     polyline = body.polyline;
   } catch {
     return;
@@ -39,7 +40,7 @@ export async function showRoute(routeId, dirId) {
   if (myRequestId !== routeRequestId) return;
   if (!polyline) return;
 
-  let latlngs;
+  let latlngs: [number, number][];
   try {
     latlngs = decodePolyline(polyline);
   } catch (err) {
@@ -59,7 +60,7 @@ export async function showRoute(routeId, dirId) {
   currentPathKey = key;
 }
 
-export function clearRoute() {
+export function clearRoute(): void {
   // Invalidate any in-flight showRoute fetch.
   routeRequestId++;
   if (currentPath) {

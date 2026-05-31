@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { decodePolyline, formatDeparture, escapeAttr } from "./pure.js";
+import { decodePolyline, formatDeparture, escapeAttr } from "./pure.ts";
 
 describe("decodePolyline", () => {
   it("matches Google's reference fixture", () => {
