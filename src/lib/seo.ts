@@ -2,13 +2,21 @@
 // dict in server/i18n.ts remains the single source of truth; this module
 // only owns the escape treatment, JSON-LD shape, and sitemap rendering.
 
-import type { Locale, Strings } from "../../server/i18n.ts";
+import type { Locale, ModeStrings } from "../../server/i18n.ts";
+import type { Mode } from "../../server/types.ts";
 
-// Locale-independent SEO crumbs. Both languages appear on every page.
-export const SEO_HIDDEN_FI =
-  "HSL:n raitiovaunut ja bussit live-kartalla Helsingissä.";
-export const SEO_HIDDEN_EN =
-  "Helsinki trams and buses live map, HSL realtime data.";
+// Per-mode SEO crumbs, both languages on every page (primary = page locale).
+// Mode-specific so the four pages don't share identical hidden copy.
+export const SEO_HIDDEN: Record<Mode, Record<Locale, string>> = {
+  tram: {
+    fi: "HSL:n raitiovaunut live-kartalla Helsingissä.",
+    en: "Helsinki trams on a live map, HSL realtime data.",
+  },
+  bus: {
+    fi: "HSL:n bussit live-kartalla Helsingissä.",
+    en: "Helsinki buses on a live map, HSL realtime data.",
+  },
+};
 
 // Shared OG / Twitter card image path (relative to the site origin). Same
 // image for both locales; consumed by the meta tags and the JSON-LD
@@ -36,21 +44,21 @@ export function safeJsonForScript(value: unknown): string {
 
 export function buildJsonLd(
   locale: Locale,
-  strings: Strings,
-  origin: string,
+  strings: ModeStrings,
+  canonicalUrl: string,
 ): string {
   const ld = {
     "@context": "https://schema.org",
     "@type": "WebApplication",
     name: "Raitsikat",
-    url: `${origin}${strings.jsonLdUrl}`,
+    url: canonicalUrl,
     description: strings.jsonLdDescription,
     applicationCategory: "TravelApplication",
     operatingSystem: "Any",
     browserRequirements: "Requires JavaScript",
     inLanguage: locale,
     offers: { "@type": "Offer", price: "0", priceCurrency: "EUR" },
-    screenshot: `${origin}${OG_IMAGE_PATH}`,
+    screenshot: `${new URL(canonicalUrl).origin}${OG_IMAGE_PATH}`,
   };
   // JSON-LD lives inside <script type="application/ld+json">; same XSS
   // surface as the i18n script block, same escape treatment.
@@ -60,33 +68,47 @@ export function buildJsonLd(
   );
 }
 
-// Canonical paths served as localized pages. Single source of truth for
-// the generated sitemap so canonicals stay in sync with the routes.
+// Canonical paths served as localized pages, one per (locale × mode).
+// Single source of truth for the generated sitemap so canonicals stay in
+// sync with the routes.
 export const LOCALIZED_PATHS: ReadonlyArray<{
-  path: "/" | "/en";
+  path: string;
   locale: Locale;
+  mode: Mode;
 }> = [
-  { path: "/", locale: "fi" },
-  { path: "/en", locale: "en" },
+  { path: "/ratikat", locale: "fi", mode: "tram" },
+  { path: "/en/trams", locale: "en", mode: "tram" },
+  { path: "/bussit", locale: "fi", mode: "bus" },
+  { path: "/en/buses", locale: "en", mode: "bus" },
 ];
 
+// Same-mode hreflang alternates. Each pair never crosses modes:
+// tram → fi /ratikat, en /en/trams, x-default /ratikat;
+// bus  → fi /bussit, en /en/buses, x-default /bussit.
+const HREFLANG_PATHS: Record<Mode, { fi: string; en: string }> = {
+  tram: { fi: "/ratikat", en: "/en/trams" },
+  bus: { fi: "/bussit", en: "/en/buses" },
+};
+
+export function hreflangPaths(mode: Mode): { fi: string; en: string } {
+  return HREFLANG_PATHS[mode];
+}
+
 export function renderSitemap(origin: string): string {
-  // hreflang block is identical for every <url> entry (Google requires
-  // each localized page to list all alternates including itself), so
-  // build it once.
-  const hreflangBlock = [
-    `    <xhtml:link rel="alternate" hreflang="fi" href="${origin}/"/>`,
-    `    <xhtml:link rel="alternate" hreflang="en" href="${origin}/en"/>`,
-    `    <xhtml:link rel="alternate" hreflang="x-default" href="${origin}/"/>`,
-  ].join("\n");
-  const urls = LOCALIZED_PATHS.map(({ path }) =>
-    [
+  const urls = LOCALIZED_PATHS.map(({ path, mode }) => {
+    const h = HREFLANG_PATHS[mode];
+    const hreflangBlock = [
+      `    <xhtml:link rel="alternate" hreflang="fi" href="${origin}${h.fi}"/>`,
+      `    <xhtml:link rel="alternate" hreflang="en" href="${origin}${h.en}"/>`,
+      `    <xhtml:link rel="alternate" hreflang="x-default" href="${origin}${h.fi}"/>`,
+    ].join("\n");
+    return [
       `  <url>`,
       `    <loc>${origin}${path}</loc>`,
       hreflangBlock,
       `  </url>`,
-    ].join("\n"),
-  ).join("\n");
+    ].join("\n");
+  }).join("\n");
   // No <changefreq>/<priority>: Google ignores both. No <lastmod>: the
   // server has no honest signal for it (boot time would lie).
   return [

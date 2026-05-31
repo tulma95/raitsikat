@@ -145,27 +145,43 @@ popup" intermittently, this counter pattern was broken.
 If `src/` (BaseLayout, pages, `src/lib/seo.ts`) or `server/i18n.ts` changed.
 No automated coverage here since the migration — these are the manual checks.
 
-1. `curl -sI localhost:3000/` → 200, `Content-Type: text/html; charset=utf-8`,
-   `Content-Language: fi`, `Cache-Control: public, max-age=60, must-revalidate`.
-   `curl -sI localhost:3000/en` → same, `Content-Language: en`.
-2. `curl -sI localhost:3000/fi` → **301**, `Location: /` (not 302/308).
-3. `curl -s localhost:3000/ | grep -E 'html lang|canonical|hreflang|og:locale'`:
-   - `<html lang="fi">` on `/`, `lang="en"` on `/en`.
-   - canonical = `SITE_ORIGIN` + `/` (or `/en`); three hreflang links (fi, en,
-     x-default), with x-default → `/`.
-   - `og:locale` = `fi_FI` on `/`, `en_US` on `/en`; alternate is the opposite.
-4. JSON-LD: `curl -s localhost:3000/ | grep -A30 'application/ld+json'` parses as
-   valid JSON, `@type` `WebApplication`, `inLanguage` matches the page locale,
-   `url`/`screenshot` use `SITE_ORIGIN`.
+Four indexable pages: `/ratikat` (fi trams), `/bussit` (fi buses),
+`/en/trams`, `/en/buses`.
+
+1. Each of the four → 200, `Content-Type: text/html; charset=utf-8`,
+   `Content-Language` (fi for `/ratikat` `/bussit`, en for the `/en/*` pair),
+   `Cache-Control: public, max-age=60, must-revalidate`.
+2. Redirects (all **301**, not 302/308): `curl -sI localhost:3000/` →
+   `Location: /ratikat`; `/en` → `/en/trams`; `/fi` → `/ratikat`.
+3. Per page `grep -E 'html lang|canonical|hreflang|og:locale'`:
+   - `<html lang>` = page locale; `data-mode` = page mode (`tram`/`bus`).
+   - canonical = `SITE_ORIGIN` + the page's own path (self-referential).
+   - Exactly two same-mode hreflang links + x-default, **never crossing
+     modes**: tram pages → fi `/ratikat`, en `/en/trams`, x-default
+     `/ratikat`; bus pages → fi `/bussit`, en `/en/buses`, x-default `/bussit`.
+   - `og:locale` = `fi_FI` / `en_US` per locale; alternate is the opposite.
+   - mode-specific `<title>` and `<h1>` (e.g. "Helsingin ratikat…" vs
+     "Helsingin bussit…").
+4. JSON-LD: `grep -A30 'application/ld+json'` parses as valid JSON, `@type`
+   `WebApplication`, `inLanguage` matches the page locale, `url` = the page's
+   own canonical, `description` is the mode-specific `jsonLdDescription`,
+   `screenshot` uses `SITE_ORIGIN`.
 5. The inline `window.__i18n` script appears in `<head>` **before** the
    Astro-bundled module script (`/_astro/*.js`), with the right `locale`. (If
    it's missing or ordered after, `src/scripts/i18n.ts` throws and the app
    won't boot.)
-6. `curl -s localhost:3000/sitemap.xml` → two `<url>` entries (`/`, `/en`),
-   each with all three `xhtml:link` alternates (fi/en/x-default), short locale
-   codes (`fi`/`en`, not `fi-FI`), no `lastmod`/`changefreq`/`priority`.
-7. Disable JS in the browser → the `<noscript>` `seo-fallback` article renders
-   per-locale; with JS on, no `window.__i18n missing` console error.
+6. `curl -s localhost:3000/sitemap.xml` → **four** `<url>` entries (order:
+   `/ratikat`, `/en/trams`, `/bussit`, `/en/buses`), each with its two
+   same-mode `xhtml:link` alternates + x-default, short locale codes
+   (`fi`/`en`, not `fi-FI`), no `lastmod`/`changefreq`/`priority`.
+7. Mode switcher renders as real `<a href data-mode>` links (no
+   `role="tab"`/`aria-selected`), active one has `aria-current="page"`. With
+   JS off, clicking a link full-navigates to that mode's page (deep-link
+   fallback). With JS on, a plain click does the instant in-place switch and
+   the URL changes via `pushState` (no full reload); Back returns to the prior
+   mode; loading `/bussit` (or `/en/buses`) directly boots bus-first.
+8. Disable JS in the browser → the `<noscript>` `seo-fallback` article renders
+   per-locale/mode; with JS on, no `window.__i18n missing` console error.
 
 ## Shared wire types
 

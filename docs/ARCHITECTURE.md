@@ -49,18 +49,36 @@ handler) + `dist/client/` (static assets Astro itself produces).
 `/healthz`) is matched first and Astro only sees what's left. Static
 files under `dist/client` are served before the handler too.
 
-Astro owns exactly the page surface:
+Astro owns exactly the page surface — **four** indexable, mode-specific
+pages plus three redirects:
 
-- `/` → Finnish, `/en` → English (both `src/pages/*` rendering
-  `src/layouts/BaseLayout.astro`).
-- `/fi` → 301 to `/`.
-- `/sitemap.xml` (`src/pages/sitemap.xml.ts`).
+- `/ratikat` → fi/trams (flagship canonical), `/bussit` → fi/buses,
+  `/en/trams` → en/trams, `/en/buses` → en/buses. All four are thin
+  `src/pages/*` files rendering `src/layouts/BaseLayout.astro` with
+  `locale` + `mode` props.
+- `/` → 301 `/ratikat`, `/en` → 301 `/en/trams`, `/fi` → 301 `/ratikat`.
+- `/sitemap.xml` (`src/pages/sitemap.xml.ts`) — four `<url>` entries with
+  per-mode hreflang blocks that never cross modes (tram pair fi↔en, bus
+  pair fi↔en, x-default → the fi page of that mode).
 
-`server/i18n.ts` stays the **i18n source of truth** — imported by both
-`src/lib/seo.ts` (canonical/hreflang/JSON-LD) and `BaseLayout.astro`
-(shell strings + `window.__i18n`). The layout sets `Content-Language`,
-`Cache-Control`, and `Content-Type: text/html; charset=utf-8` via
-`Astro.response.headers`.
+`server/i18n.ts` stays the **i18n source of truth**. Mode-INDEPENDENT
+strings (chrome + the runtime `CLIENT_KEYS`) live in `translations`;
+the 11 mode-specific SEO fields plus `langSwitchHref` live in
+`modeStrings: Record<Locale, Record<Mode, ModeStrings>>` (accessed via
+`getModeStrings(locale, mode)`). Both are imported by `src/lib/seo.ts`
+(canonical/hreflang/JSON-LD, all derived from `(locale, mode)`) and
+`BaseLayout.astro` (shell strings + `window.__i18n`). `BaseLayout` takes
+a `mode: Mode` prop and stamps the initial mode onto `<html data-mode>`
+for the client. The layout sets `Content-Language`, `Cache-Control`, and
+`Content-Type: text/html; charset=utf-8` via `Astro.response.headers`.
+
+**Mode switcher is real `<a>` links, progressively enhanced.** The
+topbar `#mode-tabs` nav holds two `<a data-mode>` links (current locale's
+mode paths) — the active one gets `aria-current="page"`. Without JS they
+deep-link and full-navigate. With JS, `main.ts` intercepts a plain
+left-click (no modifier / left button only), does the instant in-place
+`switchMode()` + `history.pushState()`, and handles `popstate` so
+Back/forward follows the URL's mode. No `role="tab"`/`aria-selected`.
 
 Because the runtime imports the prebuilt `dist/server/entry.mjs`,
 **`npm run build` must run before the server starts** (the Docker image

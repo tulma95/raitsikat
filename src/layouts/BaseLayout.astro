@@ -1,64 +1,73 @@
 ---
-import { translations, pickClientStrings } from "../../server/i18n.ts";
+import { translations, getModeStrings, pickClientStrings } from "../../server/i18n.ts";
 import type { Locale } from "../../server/i18n.ts";
+import type { Mode } from "../../server/types.ts";
 import { settings } from "../../server/settings.ts";
 import {
   buildJsonLd,
   safeJsonForScript,
-  SEO_HIDDEN_FI,
-  SEO_HIDDEN_EN,
+  hreflangPaths,
+  SEO_HIDDEN,
 } from "../lib/seo.ts";
 
 interface Props {
   locale: Locale;
+  mode: Mode;
 }
 
-const { locale } = Astro.props;
+const { locale, mode } = Astro.props;
 const s = translations[locale];
+const ms = getModeStrings(locale, mode);
 const origin = settings.siteOrigin;
 
-const canonicalPath = locale === "en" ? "/en" : "/";
+// Same-mode hreflang alternates; the current locale's path is the canonical.
+const hreflang = hreflangPaths(mode);
+const canonicalPath = locale === "en" ? hreflang.en : hreflang.fi;
 const canonicalUrl = origin + canonicalPath;
-const jsonLd = buildJsonLd(locale, s, origin);
+const jsonLd = buildJsonLd(locale, ms, canonicalUrl);
 const i18nScript = `window.__i18n=${safeJsonForScript({ locale, strings: pickClientStrings(s) })};`;
 
+// Active-link hrefs (current LOCALE's mode paths).
+const tramHref = locale === "en" ? "/en/trams" : "/ratikat";
+const busHref = locale === "en" ? "/en/buses" : "/bussit";
+
 const otherLocale: Locale = locale === "fi" ? "en" : "fi";
-const seoHiddenPrimaryText = locale === "fi" ? SEO_HIDDEN_FI : SEO_HIDDEN_EN;
-const seoHiddenSecondaryText = locale === "fi" ? SEO_HIDDEN_EN : SEO_HIDDEN_FI;
+const seoHiddenPrimaryText = SEO_HIDDEN[mode][locale];
+const seoHiddenSecondaryText = SEO_HIDDEN[mode][otherLocale];
 
 Astro.response.headers.set("Content-Type", "text/html; charset=utf-8");
 Astro.response.headers.set("Content-Language", locale);
 Astro.response.headers.set("Cache-Control", "public, max-age=60, must-revalidate");
 ---
 <!doctype html>
-<html lang={locale}>
+<html lang={locale} data-mode={mode}>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0d0f12" />
   <meta name="generator" content={Astro.generator} />
-  <title>{s.title}</title>
-  <meta name="description" content={s.description}>
+  <title>{ms.title}</title>
+  <meta name="description" content={ms.description}>
   <link rel="canonical" href={canonicalUrl}>
-  <link rel="alternate" hreflang="fi" href={`${origin}/`}>
-  <link rel="alternate" hreflang="en" href={`${origin}/en`}>
-  <link rel="alternate" hreflang="x-default" href={`${origin}/`}>
+  <link rel="alternate" hreflang="fi" href={`${origin}${hreflang.fi}`}>
+  <link rel="alternate" hreflang="en" href={`${origin}${hreflang.en}`}>
+  <link rel="alternate" hreflang="x-default" href={`${origin}${hreflang.fi}`}>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Raitsikat">
-  <meta property="og:title" content={s.ogTitle}>
-  <meta property="og:description" content={s.ogDescription}>
+  <meta property="og:title" content={ms.ogTitle}>
+  <meta property="og:description" content={ms.ogDescription}>
   <meta property="og:url" content={canonicalUrl}>
   <meta property="og:image" content={`${origin}/icons/og-image.png`}>
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content={s.ogImageAlt}>
+  <meta property="og:image:alt" content={ms.ogImageAlt}>
   <meta property="og:locale" content={s.ogLocale}>
   <meta property="og:locale:alternate" content={s.ogLocaleAlternate}>
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content={s.twitterTitle}>
-  <meta name="twitter:description" content={s.twitterDescription}>
+  <meta name="twitter:title" content={ms.twitterTitle}>
+  <meta name="twitter:description" content={ms.twitterDescription}>
   <meta name="twitter:image" content={`${origin}/icons/og-image.png`}>
-  <meta name="twitter:image:alt" content={s.ogImageAlt}>
+  <meta name="twitter:image:alt" content={ms.ogImageAlt}>
   <script type="application/ld+json" is:inline set:html={jsonLd}></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -82,9 +91,9 @@ Astro.response.headers.set("Cache-Control", "public, max-age=60, must-revalidate
 <body>
   <noscript>
     <article class="seo-fallback">
-      <h1>{s.noscriptH1}</h1>
-      <p>{s.noscriptP1}</p>
-      <p>{s.noscriptP2}</p>
+      <h1>{ms.noscriptH1}</h1>
+      <p>{ms.noscriptP1}</p>
+      <p>{ms.noscriptP2}</p>
     </article>
   </noscript>
 
@@ -103,13 +112,13 @@ Astro.response.headers.set("Cache-Control", "public, max-age=60, must-revalidate
     <div class="brand">
       <span class="brand__name">Raitsikat</span>
     </div>
-    <nav id="mode-tabs" role="tablist" aria-label={s.vehicleModeAria}>
-      <button type="button" role="tab" data-mode="tram" aria-selected="true">{s.tabTrams}</button>
-      <button type="button" role="tab" data-mode="bus" aria-selected="false">{s.tabBuses}</button>
+    <nav id="mode-tabs" aria-label={s.vehicleModeAria}>
+      <a href={tramHref} data-mode="tram" aria-current={mode === "tram" ? "page" : undefined}>{s.tabTrams}</a>
+      <a href={busHref} data-mode="bus" aria-current={mode === "bus" ? "page" : undefined}>{s.tabBuses}</a>
     </nav>
     <span id="vehicle-count-top" class="topbar__count" data-vehicle-count>{s.initialCount}</span>
     <a id="lang-switch"
-       href={s.langSwitchHref}
+       href={ms.langSwitchHref}
        hreflang={s.langSwitchTargetLocale}
        lang={s.langSwitchTargetLocale}
        aria-label={s.langSwitchAria}>{s.langSwitchText}</a>

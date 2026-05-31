@@ -138,8 +138,9 @@ body {
   border: 1px solid var(--line);
   backdrop-filter: blur(6px);
 }
-#mode-tabs button {
-  all: unset;
+#mode-tabs a {
+  display: inline-flex;
+  align-items: center;
   cursor: pointer;
   padding: 6px 14px;
   border-radius: 999px;
@@ -148,14 +149,19 @@ body {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  text-decoration: none;
   color: var(--ink-dim);
   transition: background 160ms ease, color 160ms ease;
   user-select: none;
 }
-#mode-tabs button:hover {
+#mode-tabs a:hover {
   color: var(--ink);
 }
-#mode-tabs button[aria-selected="true"] {
+#mode-tabs a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+#mode-tabs a[aria-current="page"] {
   background: rgba(34,211,184,0.16);
   color: var(--accent);
   box-shadow: inset 0 0 0 1px rgba(34,211,184,0.35);

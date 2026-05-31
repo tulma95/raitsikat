@@ -1,4 +1,6 @@
 ---
-import BaseLayout from "../layouts/BaseLayout.astro";
+// `/` is the bare entry point; the flagship canonical page is `/ratikat`.
+// 301 consolidates link equity and avoids duplicate-content confusion.
+export const prerender = false;
+return Astro.redirect("/ratikat", 301);
 ---
-<BaseLayout locale="fi" />

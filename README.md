@@ -4,7 +4,7 @@ Realtime map of Helsinki trams and buses, powered by HSL's MQTT High-Frequency P
 
 Live: https://raitsikat.rigster.cv
 
-Trams and buses are streamed from HSL over MQTT, kept in memory on the backend, and pushed to the browser via Server-Sent Events. The frontend draws each vehicle on a Leaflet map, lets you filter by line, click a vehicle to see its route polyline, and is installable as a PWA. Switch modes from the topbar. The HTML shell (Finnish at `/`, English at `/en`) is server-rendered by Astro for SEO; the realtime layer is plain vanilla JS.
+Trams and buses are streamed from HSL over MQTT, kept in memory on the backend, and pushed to the browser via Server-Sent Events. The frontend draws each vehicle on a Leaflet map, lets you filter by line, click a vehicle to see its route polyline, and is installable as a PWA. Switch modes from the topbar. The HTML shell is server-rendered by Astro for SEO as four mode-specific pages — `/ratikat` (fi trams), `/bussit` (fi buses), `/en/trams`, `/en/buses` — and `/`, `/en`, `/fi` 301-redirect into them. The realtime layer is plain vanilla JS.
 
 ## Requirements
 
@@ -55,5 +55,5 @@ A `.env` file in the project root is loaded automatically.
 ## How it works
 
 - Backend (`server/`) runs two independent pipelines, one per mode. Each subscribes to `mqtts://mqtt.hsl.fi:8883` — tram (`/hfp/v2/journey/ongoing/vp/tram/#`) and bus (`/hfp/v2/journey/ongoing/vp/bus/#`) — keeps an in-memory map of vehicle positions, evicts stale entries after 60 seconds, and relays snapshots + updates over Server-Sent Events at `/{mode}/events` (`/tram/events`, `/bus/events`). Route geometries and stops/departures are fetched on demand from Digitransit and cached. Map tiles are proxied (and transcoded to WebP) through `/tiles/...` so the Digitransit subscription key never reaches the browser.
-- Frontend (`src/scripts/`) is TypeScript, bundled by Astro (Vite) — Leaflet is imported as a module and bundled in. Draws vehicle markers over the Digitransit `hsl-map` basemap (data © OpenStreetMap); mode tabs switch between trams and buses, line chips toggle visibility, and selection persists in `localStorage`.
-- The page shell (`src/`) is server-rendered by Astro in `@astrojs/node` middleware mode, mounted inside the Express app. Astro owns only `/`, `/en`, `/fi` (→ 301 `/`), and `/sitemap.xml`; everything else is the Express backend. `server/i18n.ts` is the shared i18n source of truth. See `docs/ARCHITECTURE.md`.
+- Frontend (`src/scripts/`) is TypeScript, bundled by Astro (Vite) — Leaflet is imported as a module and bundled in. Draws vehicle markers over the Digitransit `hsl-map` basemap (data © OpenStreetMap); the mode switcher (two `<a>` links in the topbar) deep-links and full-navigates without JS, or does an instant in-place switch + `pushState` with JS; line chips toggle visibility, and selection persists in `localStorage`.
+- The page shell (`src/`) is server-rendered by Astro in `@astrojs/node` middleware mode, mounted inside the Express app. Astro owns four mode-specific pages — `/ratikat`, `/bussit`, `/en/trams`, `/en/buses` — plus the redirects `/` → `/ratikat`, `/en` → `/en/trams`, `/fi` → `/ratikat`, and `/sitemap.xml`; everything else is the Express backend. `server/i18n.ts` is the shared i18n source of truth. See `docs/ARCHITECTURE.md`.
