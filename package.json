@@ -9,7 +9,9 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env server/index.ts",
     "dev": "node --watch --env-file-if-exists=.env server/index.ts",
-    "typecheck": "tsc --noEmit",
+    "build": "astro build",
+    "dev:astro": "astro build --watch",
+    "typecheck": "astro check && tsc -p tsconfig.server.json --noEmit",
     "test": "./run_test.sh"
   },
   "keywords": [],
@@ -17,12 +19,15 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@astrojs/node": "^10.1.2",
+    "astro": "^6.4.2",
     "express": "^5.2.1",
     "leaflet": "^1.9.4",
     "mqtt": "^5.15.1",
     "sharp": "^0.34.5"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.9",
     "@types/express": "^5.0.6",
     "@types/node": "^25.6.0",
     "typescript": "^6.0.2"

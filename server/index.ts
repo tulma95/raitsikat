@@ -7,23 +7,22 @@ import { startSseServer } from "./sse-server.ts";
 import { startRouteCache } from "./route-cache.ts";
 import { startStopCache } from "./stop-cache.ts";
 import { createDigitransitClient } from "./digitransit-client.ts";
-import { createLocalizedIndex } from "./localized-index.ts";
 import { createTileProxy } from "./tile-proxy.ts";
 import type { Mode } from "./types.ts";
 import { settings } from "./settings.ts";
 import { logger } from "./logger.ts";
+// @ts-expect-error generated Astro middleware entry, built by `astro build`, no types
+import { handler as ssrHandler } from "../dist/server/entry.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
-const publicDir = join(__dirname, "..", "public");
-// Mount the localized index router BEFORE static so it wins for `/`,
-// `/fi`, `/en`. `index: false` keeps express.static from serving
-// public/index.html directly for `/`.
-const localizedIndex = createLocalizedIndex({ publicDir });
-app.use(localizedIndex.router);
-app.use(express.static(publicDir, { index: false }));
+// `/`, `/en`, `/fi`, `/sitemap.xml` are owned by the Astro SSR handler
+// (mounted last). Static assets are served from the Astro build's client
+// dir; `index: false` keeps express.static from serving the stale,
+// un-templated `dist/client/index.html` for `/` (Astro must own `/`).
+app.use(express.static(join(__dirname, "..", "dist", "client"), { index: false }));
 app.use(
   "/vendor/leaflet",
   express.static(join(__dirname, "..", "node_modules", "leaflet", "dist"), {
@@ -128,6 +127,11 @@ app.get("/healthz", (_req, res) => {
   );
   res.status(fresh ? 200 : 503).json(modes);
 });
+
+// Astro SSR handler is mounted LAST: it owns only `/`, `/en`, `/fi`,
+// `/sitemap.xml` and calls next() for everything else, so all backend
+// routers above (tiles, SSE, route, stops, healthz) win.
+app.use(ssrHandler);
 
 const httpLog = logger.child({ component: "http" });
 const server = app.listen(settings.port, () => {

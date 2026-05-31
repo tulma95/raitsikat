@@ -1,0 +1,148 @@
+---
+import { translations, pickClientStrings } from "../../server/i18n.ts";
+import type { Locale } from "../../server/i18n.ts";
+import { settings } from "../../server/settings.ts";
+import {
+  buildJsonLd,
+  safeJsonForScript,
+  SEO_HIDDEN_FI,
+  SEO_HIDDEN_EN,
+} from "../lib/seo.ts";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const s = translations[locale];
+const origin = settings.siteOrigin;
+
+const canonicalPath = locale === "en" ? "/en" : "/";
+const canonicalUrl = origin + canonicalPath;
+const jsonLd = buildJsonLd(locale, s, origin);
+const i18nScript = `window.__i18n=${safeJsonForScript({ locale, strings: pickClientStrings(s) })};`;
+
+const otherLocale: Locale = locale === "fi" ? "en" : "fi";
+const seoHiddenPrimaryText = locale === "fi" ? SEO_HIDDEN_FI : SEO_HIDDEN_EN;
+const seoHiddenSecondaryText = locale === "fi" ? SEO_HIDDEN_EN : SEO_HIDDEN_FI;
+
+Astro.response.headers.set("Content-Type", "text/html; charset=utf-8");
+Astro.response.headers.set("Content-Language", locale);
+Astro.response.headers.set("Cache-Control", "public, max-age=60, must-revalidate");
+---
+<!doctype html>
+<html lang={locale}>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0f12" />
+  <title>{s.title}</title>
+  <meta name="description" content={s.description}>
+  <link rel="canonical" href={canonicalUrl}>
+  <link rel="alternate" hreflang="fi" href={`${origin}/`}>
+  <link rel="alternate" hreflang="en" href={`${origin}/en`}>
+  <link rel="alternate" hreflang="x-default" href={`${origin}/`}>
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Raitsikat">
+  <meta property="og:title" content={s.ogTitle}>
+  <meta property="og:description" content={s.ogDescription}>
+  <meta property="og:url" content={canonicalUrl}>
+  <meta property="og:image" content={`${origin}/icons/og-image.png`}>
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content={s.ogImageAlt}>
+  <meta property="og:locale" content={s.ogLocale}>
+  <meta property="og:locale:alternate" content={s.ogLocaleAlternate}>
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content={s.twitterTitle}>
+  <meta name="twitter:description" content={s.twitterDescription}>
+  <meta name="twitter:image" content={`${origin}/icons/og-image.png`}>
+  <meta name="twitter:image:alt" content={s.ogImageAlt}>
+  <script type="application/ld+json" is:inline set:html={jsonLd}></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preload" as="script" href="/vendor/leaflet/leaflet.js" />
+  <link rel="modulepreload" href="/js/main.js" />
+  <link rel="modulepreload" href="/js/map.js" />
+  <link rel="modulepreload" href="/js/vehicles.js" />
+  <link rel="modulepreload" href="/js/stops.js" />
+  <link rel="modulepreload" href="/js/filter.js" />
+  <link rel="modulepreload" href="/js/sse.js" />
+  <link rel="modulepreload" href="/js/route-overlay.js" />
+  <link rel="modulepreload" href="/js/animation.js" />
+  <link rel="modulepreload" href="/js/connection.js" />
+  <link rel="modulepreload" href="/js/mode.js" />
+  <link rel="modulepreload" href="/js/location.js" />
+  <link rel="modulepreload" href="/js/dom.js" />
+  <link rel="modulepreload" href="/js/pure.js" />
+  <link rel="modulepreload" href="/js/i18n.js" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" /></noscript>
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" media="print" onload="this.media='all'" />
+  <noscript><link rel="stylesheet" href="/vendor/leaflet/leaflet.css" /></noscript>
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+  <link rel="icon" type="image/png" sizes="48x48" href="/icons/icon-48.png" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="48x48" />
+  <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Raitsikat" />
+
+  <script is:inline set:html={i18nScript}></script>
+  <script is:inline defer src="https://vahti.rigster.cv/script.js" data-website-id="2b352cb3-1936-4060-9fb3-6d18ee2aa4e0"></script>
+</head>
+<body>
+  <noscript>
+    <article class="seo-fallback">
+      <h1>{s.noscriptH1}</h1>
+      <p>{s.noscriptP1}</p>
+      <p>{s.noscriptP2}</p>
+    </article>
+  </noscript>
+
+  <div class="seo-hidden">
+    <p lang={locale}>{seoHiddenPrimaryText}</p>
+    <p lang={otherLocale}>{seoHiddenSecondaryText}</p>
+  </div>
+
+  <div id="conn-toast" role="status" aria-live="polite" hidden>
+    <span class="conn-toast__dot" aria-hidden="true"></span>
+    <span class="conn-toast__label"></span>
+  </div>
+  <div id="map" aria-label={s.mapAria}></div>
+
+  <header id="topbar">
+    <div class="brand">
+      <span class="brand__name">Raitsikat</span>
+    </div>
+    <nav id="mode-tabs" role="tablist" aria-label={s.vehicleModeAria}>
+      <button type="button" role="tab" data-mode="tram" aria-selected="true">{s.tabTrams}</button>
+      <button type="button" role="tab" data-mode="bus" aria-selected="false">{s.tabBuses}</button>
+    </nav>
+    <span id="vehicle-count-top" class="topbar__count" data-vehicle-count>{s.initialCount}</span>
+    <a id="lang-switch"
+       href={s.langSwitchHref}
+       hreflang={s.langSwitchTargetLocale}
+       lang={s.langSwitchTargetLocale}
+       aria-label={s.langSwitchAria}>{s.langSwitchText}</a>
+  </header>
+
+  <section id="sheet" aria-label={s.sheetLines}>
+    <button id="sheet-toggle" aria-expanded="false" aria-controls="sheet-body">
+      <span class="sheet__handle" aria-hidden="true"></span>
+      <span class="sheet__title">{s.sheetLines}</span>
+      <span class="sheet__count" id="vehicle-count" data-vehicle-count>{s.initialCount}</span>
+    </button>
+    <div id="sheet-body">
+      <div id="line-filter" role="group" aria-label={s.lineFilterAria}></div>
+    </div>
+  </section>
+
+  <script is:inline defer src="/vendor/leaflet/leaflet.js"></script>
+  <script is:inline type="module" src="/js/main.js"></script>
+</body>
+</html>

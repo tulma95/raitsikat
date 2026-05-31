@@ -12,12 +12,15 @@ behavior should match.
 
 ## Boot
 
-1. `npm run typecheck` — clean.
-2. `curl -s localhost:3000/healthz | jq` within ~10s of boot:
+1. `npm run build` — the server imports the Astro build output
+   (`dist/server/entry.mjs`), so this must run before boot. In dev, keep
+   `npm run dev:astro` running so `dist/` stays fresh.
+2. `npm run typecheck` — clean.
+3. `curl -s localhost:3000/healthz | jq` within ~10s of boot:
    - `tram.mqttConnected: true` and `bus.mqttConnected: true`.
    - `vehicleCount` > 0 per mode during service hours.
    - `lastMqttMessageAt` within the last few seconds for both modes.
-3. Server log shows `[mqtt:tram] subscribed`, `[mqtt:bus] subscribed`,
+4. Server log shows `[mqtt:tram] subscribed`, `[mqtt:bus] subscribed`,
    `[route-cache:tram] refreshed N patterns`, `[stop-cache:bus] refreshed
    N stops`, etc. Cache lines may arrive over the first ~30s; bus route
    warmup is several hundred patterns and takes longer than tram.
@@ -136,6 +139,32 @@ popup" intermittently, this counter pattern was broken.
    - Vehicles that stopped reporting get evicted (state.evict interval, see
      `settings.evictIntervalMs`); map clears them.
    - No memory growth pattern in `ps`/`top`.
+
+## SSR shell + SEO (Astro)
+
+If `src/` (BaseLayout, pages, `src/lib/seo.ts`) or `server/i18n.ts` changed.
+No automated coverage here since the migration — these are the manual checks.
+
+1. `curl -sI localhost:3000/` → 200, `Content-Type: text/html; charset=utf-8`,
+   `Content-Language: fi`, `Cache-Control: public, max-age=60, must-revalidate`.
+   `curl -sI localhost:3000/en` → same, `Content-Language: en`.
+2. `curl -sI localhost:3000/fi` → **301**, `Location: /` (not 302/308).
+3. `curl -s localhost:3000/ | grep -E 'html lang|canonical|hreflang|og:locale'`:
+   - `<html lang="fi">` on `/`, `lang="en"` on `/en`.
+   - canonical = `SITE_ORIGIN` + `/` (or `/en`); three hreflang links (fi, en,
+     x-default), with x-default → `/`.
+   - `og:locale` = `fi_FI` on `/`, `en_US` on `/en`; alternate is the opposite.
+4. JSON-LD: `curl -s localhost:3000/ | grep -A30 'application/ld+json'` parses as
+   valid JSON, `@type` `WebApplication`, `inLanguage` matches the page locale,
+   `url`/`screenshot` use `SITE_ORIGIN`.
+5. The inline `window.__i18n` script appears in `<head>` **before** the
+   `/js/main.js` module script, with the right `locale`. (If it's missing or
+   ordered after, `public/js/i18n.js` throws and the app won't boot.)
+6. `curl -s localhost:3000/sitemap.xml` → two `<url>` entries (`/`, `/en`),
+   each with all three `xhtml:link` alternates (fi/en/x-default), short locale
+   codes (`fi`/`en`, not `fi-FI`), no `lastmod`/`changefreq`/`priority`.
+7. Disable JS in the browser → the `<noscript>` `seo-fallback` article renders
+   per-locale; with JS on, no `window.__i18n missing` console error.
 
 ## Shared wire types
 

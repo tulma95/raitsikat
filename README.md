@@ -4,27 +4,43 @@ Realtime map of Helsinki trams and buses, powered by HSL's MQTT High-Frequency P
 
 Live: https://raitsikat.rigster.cv
 
-Trams and buses are streamed from HSL over MQTT, kept in memory on the backend, and pushed to the browser via Server-Sent Events. The frontend draws each vehicle on a Leaflet map, lets you filter by line, click a vehicle to see its route polyline, and is installable as a PWA. Switch modes from the topbar.
+Trams and buses are streamed from HSL over MQTT, kept in memory on the backend, and pushed to the browser via Server-Sent Events. The frontend draws each vehicle on a Leaflet map, lets you filter by line, click a vehicle to see its route polyline, and is installable as a PWA. Switch modes from the topbar. The HTML shell (Finnish at `/`, English at `/en`) is server-rendered by Astro for SEO; the realtime layer is plain vanilla JS.
 
 ## Requirements
 
-- Node 24+ (for native TypeScript execution — no build step)
+- Node 24+ — the server runs TypeScript natively (no transpile step). The Astro frontend shell is the one thing that's built ahead of time, via `npm run build`.
 
 ## Run
 
 ```
 npm install
-npm run dev     # auto-reload on file changes
-npm start       # one-shot
+npm run build   # build the Astro shell — required before the server starts
+npm start       # serve on :3000
 npm run typecheck
 ```
 
 Open http://localhost:3000.
 
+For active development, run the Astro build watcher and the server watcher in
+two panes (the server imports the build output, so `dist/` must stay fresh):
+
+```
+npm run dev:astro   # astro build --watch  (rebuilds the shell on src/ changes)
+npm run dev         # node --watch         (restarts the server on server/ changes)
+```
+
 ## Configuration
 
 - `PORT` — HTTP port (default `3000`)
-- `DIGITRANSIT_API_KEY` — Digitransit subscription key; required for route polyline overlays. Without it the app still runs and shows live tram positions, but clicking a tram won't draw its route.
+- `DIGITRANSIT_API_KEY` — Digitransit subscription key. Enables the basemap
+  tile proxy, route polyline overlays, and stop/departure lookups. Without it
+  the app still boots and streams live vehicle positions over MQTT, but the map
+  tiles, route overlays, and stops are all disabled.
+- `SITE_ORIGIN` — public origin used for canonical URLs, hreflang alternates,
+  OG tags, and the sitemap (default `https://raitsikat.rigster.cv`). Override in
+  staging so canonicals don't point at production.
+- `LOG_LEVEL` (default `info`) / `LOG_FORMAT` (`json` | `pretty`; auto by TTY) —
+  see `server/logger.ts`.
 
 A `.env` file in the project root is loaded automatically.
 
@@ -38,5 +54,6 @@ A `.env` file in the project root is loaded automatically.
 
 ## How it works
 
-- Backend (`server/`) subscribes to `mqtts://mqtt.hsl.fi:8883` for both tram (`/hfp/v2/journey/ongoing/vp/tram/#`) and bus (`/hfp/v2/journey/ongoing/vp/bus/#`) HFP feeds, keeps an in-memory map of vehicle positions, evicts stale entries after 60 seconds, and relays snapshots + updates over Server-Sent Events at `/events`. Route geometries are fetched on demand from Digitransit and cached.
-- Frontend (`public/`) is plain HTML + vanilla JS + Leaflet. Draws vehicle markers on an OpenStreetMap base map; mode tabs switch between trams and buses, line chips toggle visibility, and selection persists in `localStorage`.
+- Backend (`server/`) runs two independent pipelines, one per mode. Each subscribes to `mqtts://mqtt.hsl.fi:8883` — tram (`/hfp/v2/journey/ongoing/vp/tram/#`) and bus (`/hfp/v2/journey/ongoing/vp/bus/#`) — keeps an in-memory map of vehicle positions, evicts stale entries after 60 seconds, and relays snapshots + updates over Server-Sent Events at `/{mode}/events` (`/tram/events`, `/bus/events`). Route geometries and stops/departures are fetched on demand from Digitransit and cached. Map tiles are proxied (and transcoded to WebP) through `/tiles/...` so the Digitransit subscription key never reaches the browser.
+- Frontend (`public/js/`) is plain vanilla JS + Leaflet, served unbundled. Draws vehicle markers over the Digitransit `hsl-map` basemap (data © OpenStreetMap); mode tabs switch between trams and buses, line chips toggle visibility, and selection persists in `localStorage`.
+- The page shell (`src/`) is server-rendered by Astro in `@astrojs/node` middleware mode, mounted inside the Express app. Astro owns only `/`, `/en`, `/fi` (→ 301 `/`), and `/sitemap.xml`; everything else is the Express backend. `server/i18n.ts` is the shared i18n source of truth. See `docs/ARCHITECTURE.md`.

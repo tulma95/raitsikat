@@ -1,6 +1,6 @@
-// Localized UI strings. Single source of truth for both the HTML
-// templating in `localized-index.ts` and the runtime strings exposed to
-// the browser via `window.__i18n`.
+// Localized UI strings. Single source of truth for both the SSR shell
+// (`src/layouts/BaseLayout.astro` + `src/lib/seo.ts`) and the runtime
+// strings exposed to the browser via `window.__i18n`.
 
 export type Locale = "fi" | "en";
 

@@ -39,6 +39,34 @@ wires one full pipeline.
 When adding a server module, follow the same shape: factory in, handle
 out, wired in `index.ts`.
 
+## SSR shell: Astro in middleware mode
+
+The HTML shell is rendered by Astro (`@astrojs/node`, middleware mode),
+not by Express. `astro build` emits `dist/server/entry.mjs` (the SSR
+handler) + `dist/client/` (static assets Astro itself produces).
+`server/index.ts` imports that handler and mounts it **last**
+(`app.use(ssrHandler)`), so every backend route (MQTT/SSE/tiles/caches/
+`/healthz`) is matched first and Astro only sees what's left. Static
+files under `dist/client` are served before the handler too.
+
+Astro owns exactly the page surface:
+
+- `/` → Finnish, `/en` → English (both `src/pages/*` rendering
+  `src/layouts/BaseLayout.astro`).
+- `/fi` → 301 to `/`.
+- `/sitemap.xml` (`src/pages/sitemap.xml.ts`).
+
+`server/i18n.ts` stays the **i18n source of truth** — imported by both
+`src/lib/seo.ts` (canonical/hreflang/JSON-LD) and `BaseLayout.astro`
+(shell strings + `window.__i18n`). The layout sets `Content-Language`,
+`Cache-Control`, and `Content-Type: text/html; charset=utf-8` via
+`Astro.response.headers`.
+
+Because the runtime imports the prebuilt `dist/server/entry.mjs`,
+**`npm run build` must run before the server starts** (the Docker image
+builds it in-layer; locally use `npm run dev:astro` to rebuild on
+change).
+
 ## Caches: warmup + lazy + gate
 
 Both `route-cache` and `stop-cache` follow the same three-part pattern.
@@ -70,8 +98,14 @@ The shared mechanics live in `cache-helpers.ts`:
 ## Frontend wiring
 
 Plain ES modules under `public/js/`, loaded via `<script type="module">`.
-No bundler. Leaflet is a global from `/vendor/leaflet/leaflet.js`
-(self-hosted from `node_modules`).
+**Astro does not bundle them.** The layout references them as
+`is:inline` script tags pointing at raw `/js/*` paths, so Astro leaves
+them untouched and Express serves them verbatim from `public/`. This is
+deliberate: the `filter.js` ↔ `vehicles.js` live-binding cycle (below)
+and Leaflet-as-a-global both rely on the modules loading as-authored,
+which a bundler's tree-shaking / scope-hoisting would break. Leaflet is
+a global from `/vendor/leaflet/leaflet.js` (self-hosted from
+`node_modules`).
 
 **Cycle between `filter.js` ↔ `vehicles.js`.** Both import from each
 other. This works because the imports are referenced only inside function

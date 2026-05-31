@@ -7,5 +7,7 @@ docs
 .env
 .env.*
 *.log
-tsconfig.json
 start_production.sh
+# Built inside the image by `npm run build`, never copied from host.
+dist
+.astro
