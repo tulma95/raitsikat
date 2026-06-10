@@ -132,7 +132,18 @@ function makeLogger(
     } else {
       const record: Record<string, unknown> = { time, level, ...bindings, msg };
       if (norm) Object.assign(record, norm);
-      line = JSON.stringify(record);
+      try {
+        line = JSON.stringify(record);
+      } catch {
+        // A circular or BigInt value in fields must not throw out of the
+        // logger. Emit a minimal record so the line (and its level) survive.
+        line = JSON.stringify({
+          time,
+          level,
+          msg,
+          logError: "fields not serializable",
+        });
+      }
     }
     cfg.out.write(line + "\n");
   }
