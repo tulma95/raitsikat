@@ -33,39 +33,9 @@ interface CachedTile {
   contentType: string;
 }
 
-// Simple LRU via Map insertion order. Tile bodies are ~10-50 KB, so
-// 2048 entries ≈ 40-100 MB worst case — well within a server-side
-// budget and bounded.
-const tileCache = new Map<string, CachedTile>();
-
-// Request coalescing: when N clients hit the same uncached tile
-// concurrently, only one upstream fetch + transcode runs. Without this
-// a fresh viewport could fan out into dozens of identical upstream
-// calls and burn Digitransit quota / CPU. Entry is removed once the
-// promise settles, so memory stays bounded by concurrency, not cache
-// size.
 type FetchResult =
   | { ok: true; tile: CachedTile }
   | { ok: false; status: number };
-const inflight = new Map<string, Promise<FetchResult>>();
-
-function cacheGet(key: string): CachedTile | undefined {
-  const hit = tileCache.get(key);
-  if (!hit) return undefined;
-  tileCache.delete(key);
-  tileCache.set(key, hit);
-  return hit;
-}
-
-function cacheSet(key: string, value: CachedTile): void {
-  if (tileCache.has(key)) tileCache.delete(key);
-  tileCache.set(key, value);
-  while (tileCache.size > CACHE_MAX_ENTRIES) {
-    const oldest = tileCache.keys().next().value;
-    if (oldest === undefined) break;
-    tileCache.delete(oldest);
-  }
-}
 
 export interface TileProxyOptions {
   apiKey: string;
@@ -74,26 +44,7 @@ export interface TileProxyOptions {
 
 export interface TileProxyHandle {
   router: Router;
-}
-
-export function createTileProxy(opts: TileProxyOptions): TileProxyHandle {
-  const router = Router();
-  const log = opts.logger;
-
-  // Register the @2x route FIRST. path-to-regexp's `:y` capture is
-  // non-greedy and the `.png` literal is shared between both routes, so
-  // if the plain route were registered first, a request like
-  // `/tiles/hsl-map/13/4660/2378@2x.png` would match it with
-  // `:y = "2378@2x"` and the response would silently be a non-retina
-  // tile.
-  router.get("/tiles/:style/:z/:x/:y@2x.png", (req, res) => {
-    void handleTile(req, res, opts.apiKey, "@2x", log);
-  });
-  router.get("/tiles/:style/:z/:x/:y.png", (req, res) => {
-    void handleTile(req, res, opts.apiKey, "", log);
-  });
-
-  return { router };
+  dispose: () => void;
 }
 
 const DIGITS = /^\d+$/;
@@ -104,139 +55,193 @@ function acceptsWebp(req: Request): boolean {
   return header.includes("image/webp");
 }
 
-async function handleTile(
-  req: Request,
-  res: Response,
-  apiKey: string,
-  retina: "" | "@2x",
-  log: Logger,
-): Promise<void> {
-  // Express 5's param types are `string | string[]`; these routes only
-  // ever produce scalars, but narrow defensively so a malformed capture
-  // can't reach validation as an array.
-  const style = req.params.style;
-  const zRaw = req.params.z;
-  const xRaw = req.params.x;
-  const yRaw = req.params.y;
-  if (
-    typeof style !== "string" ||
-    typeof zRaw !== "string" ||
-    typeof xRaw !== "string" ||
-    typeof yRaw !== "string"
-  ) {
-    res.status(400).end();
-    return;
-  }
-  if (!ALLOWED_STYLES.has(style)) {
-    res.status(404).end();
-    return;
+export function createTileProxy(opts: TileProxyOptions): TileProxyHandle {
+  const router = Router();
+  const log = opts.logger;
+  const apiKey = opts.apiKey;
+
+  // Simple LRU via Map insertion order. Tile bodies are ~10-50 KB, so
+  // 2048 entries ≈ 40-100 MB worst case — well within a server-side
+  // budget and bounded. Per-instance so two proxies never share state.
+  const tileCache = new Map<string, CachedTile>();
+
+  // Request coalescing: when N clients hit the same uncached tile
+  // concurrently, only one upstream fetch + transcode runs. Without this
+  // a fresh viewport could fan out into dozens of identical upstream
+  // calls and burn Digitransit quota / CPU. Entry is removed once the
+  // promise settles, so memory stays bounded by concurrency, not cache
+  // size.
+  const inflight = new Map<string, Promise<FetchResult>>();
+
+  function cacheGet(key: string): CachedTile | undefined {
+    const hit = tileCache.get(key);
+    if (!hit) return undefined;
+    tileCache.delete(key);
+    tileCache.set(key, hit);
+    return hit;
   }
 
-  // Strict digit-only check; Number.parseInt is too lenient
-  // ("2378@2x" → 2378), which would let polluted captures from the
-  // non-retina route slip past if the registration order ever changes.
-  if (!DIGITS.test(zRaw) || !DIGITS.test(xRaw) || !DIGITS.test(yRaw)) {
-    res.status(400).end();
-    return;
-  }
-  const z = Number.parseInt(zRaw, 10);
-  const x = Number.parseInt(xRaw, 10);
-  const y = Number.parseInt(yRaw, 10);
-  const tilesAtZ = 2 ** z;
-  if (z < MIN_ZOOM || z > MAX_ZOOM || x >= tilesAtZ || y >= tilesAtZ) {
-    res.status(400).end();
-    return;
+  function cacheSet(key: string, value: CachedTile): void {
+    if (tileCache.has(key)) tileCache.delete(key);
+    tileCache.set(key, value);
+    while (tileCache.size > CACHE_MAX_ENTRIES) {
+      const oldest = tileCache.keys().next().value;
+      if (oldest === undefined) break;
+      tileCache.delete(oldest);
+    }
   }
 
-  const wantWebp = acceptsWebp(req);
-  const tilePath = `${style}/${z}/${x}/${y}${retina}`;
-  const cacheKey = `${wantWebp ? "webp" : "png"}:${tilePath}`;
+  async function handleTile(
+    req: Request,
+    res: Response,
+    retina: "" | "@2x",
+  ): Promise<void> {
+    // Express 5's param types are `string | string[]`; these routes only
+    // ever produce scalars, but narrow defensively so a malformed capture
+    // can't reach validation as an array.
+    const style = req.params.style;
+    const zRaw = req.params.z;
+    const xRaw = req.params.x;
+    const yRaw = req.params.y;
+    if (
+      typeof style !== "string" ||
+      typeof zRaw !== "string" ||
+      typeof xRaw !== "string" ||
+      typeof yRaw !== "string"
+    ) {
+      res.status(400).end();
+      return;
+    }
+    if (!ALLOWED_STYLES.has(style)) {
+      res.status(404).end();
+      return;
+    }
 
-  // Vary so a shared cache (CDN, intermediary) keeps WebP and PNG
-  // variants apart for clients that disagree on Accept. The long
-  // Cache-Control is set per success path below — never on an error
-  // response, or a transient upstream 502/404 would be cached for a day.
-  res.setHeader("Vary", "Accept");
+    // Strict digit-only check; Number.parseInt is too lenient
+    // ("2378@2x" → 2378), which would let polluted captures from the
+    // non-retina route slip past if the registration order ever changes.
+    if (!DIGITS.test(zRaw) || !DIGITS.test(xRaw) || !DIGITS.test(yRaw)) {
+      res.status(400).end();
+      return;
+    }
+    const z = Number.parseInt(zRaw, 10);
+    const x = Number.parseInt(xRaw, 10);
+    const y = Number.parseInt(yRaw, 10);
+    const tilesAtZ = 2 ** z;
+    if (z < MIN_ZOOM || z > MAX_ZOOM || x >= tilesAtZ || y >= tilesAtZ) {
+      res.status(400).end();
+      return;
+    }
 
-  const cached = cacheGet(cacheKey);
-  if (cached) {
+    const wantWebp = acceptsWebp(req);
+    const tilePath = `${style}/${z}/${x}/${y}${retina}`;
+    const cacheKey = `${wantWebp ? "webp" : "png"}:${tilePath}`;
+
+    // Vary so a shared cache (CDN, intermediary) keeps WebP and PNG
+    // variants apart for clients that disagree on Accept. The long
+    // Cache-Control is set per success path below — never on an error
+    // response, or a transient upstream 502/404 would be cached for a day.
+    res.setHeader("Vary", "Accept");
+
+    const cached = cacheGet(cacheKey);
+    if (cached) {
+      res.status(200);
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.setHeader("Content-Type", cached.contentType);
+      res.send(cached.body);
+      return;
+    }
+
+    let promise = inflight.get(cacheKey);
+    if (!promise) {
+      promise = fetchAndPrepare(cacheKey, wantWebp, tilePath);
+      inflight.set(cacheKey, promise);
+      // Clear the in-flight entry once it settles so future cache
+      // misses can refetch (e.g. after eviction). Use a detached
+      // handler so awaiters see the original result/rejection.
+      promise.finally(() => {
+        if (inflight.get(cacheKey) === promise) inflight.delete(cacheKey);
+      });
+    }
+
+    const result = await promise;
+    if (!result.ok) {
+      res.status(result.status).end();
+      return;
+    }
     res.status(200);
     res.setHeader("Cache-Control", "public, max-age=86400");
-    res.setHeader("Content-Type", cached.contentType);
-    res.send(cached.body);
-    return;
+    res.setHeader("Content-Type", result.tile.contentType);
+    res.send(result.tile.body);
   }
 
-  let promise = inflight.get(cacheKey);
-  if (!promise) {
-    promise = fetchAndPrepare(cacheKey, wantWebp, tilePath, apiKey, log);
-    inflight.set(cacheKey, promise);
-    // Clear the in-flight entry once it settles so future cache
-    // misses can refetch (e.g. after eviction). Use a detached
-    // handler so awaiters see the original result/rejection.
-    promise.finally(() => {
-      if (inflight.get(cacheKey) === promise) inflight.delete(cacheKey);
-    });
-  }
-
-  const result = await promise;
-  if (!result.ok) {
-    res.status(result.status).end();
-    return;
-  }
-  res.status(200);
-  res.setHeader("Cache-Control", "public, max-age=86400");
-  res.setHeader("Content-Type", result.tile.contentType);
-  res.send(result.tile.body);
-}
-
-async function fetchAndPrepare(
-  cacheKey: string,
-  wantWebp: boolean,
-  tilePath: string,
-  apiKey: string,
-  log: Logger,
-): Promise<FetchResult> {
-  const url = `${UPSTREAM_BASE}/${tilePath}.png`;
-  try {
-    const upstream = await fetch(url, {
-      headers: { "digitransit-subscription-key": apiKey },
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-    if (!upstream.ok) {
-      return { ok: false, status: upstream.status };
-    }
-    const pngBuf = Buffer.from(await upstream.arrayBuffer());
-
-    if (wantWebp) {
-      try {
-        const body = await sharp(pngBuf)
-          .webp({ quality: WEBP_QUALITY, effort: WEBP_EFFORT })
-          .toBuffer();
-        const tile: CachedTile = { body, contentType: "image/webp" };
-        cacheSet(cacheKey, tile);
-        return { ok: true, tile };
-      } catch (err) {
-        // Transcode failures may be transient (OOM, libvips hiccup).
-        // Serve PNG for this request, but DON'T cache it under the
-        // webp key — otherwise a single failure poisons the slot for
-        // the lifetime of the process.
-        log.error("webp transcode failed", { tilePath, err });
-        return {
-          ok: true,
-          tile: { body: pngBuf, contentType: "image/png" },
-        };
+  async function fetchAndPrepare(
+    cacheKey: string,
+    wantWebp: boolean,
+    tilePath: string,
+  ): Promise<FetchResult> {
+    const url = `${UPSTREAM_BASE}/${tilePath}.png`;
+    try {
+      const upstream = await fetch(url, {
+        headers: { "digitransit-subscription-key": apiKey },
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+      if (!upstream.ok) {
+        return { ok: false, status: upstream.status };
       }
-    }
+      const pngBuf = Buffer.from(await upstream.arrayBuffer());
 
-    const tile: CachedTile = {
-      body: pngBuf,
-      contentType: upstream.headers.get("content-type") ?? "image/png",
-    };
-    cacheSet(cacheKey, tile);
-    return { ok: true, tile };
-  } catch (err) {
-    log.error("upstream error", { tilePath, err });
-    return { ok: false, status: 502 };
+      if (wantWebp) {
+        try {
+          const body = await sharp(pngBuf)
+            .webp({ quality: WEBP_QUALITY, effort: WEBP_EFFORT })
+            .toBuffer();
+          const tile: CachedTile = { body, contentType: "image/webp" };
+          cacheSet(cacheKey, tile);
+          return { ok: true, tile };
+        } catch (err) {
+          // Transcode failures may be transient (OOM, libvips hiccup).
+          // Serve PNG for this request, but DON'T cache it under the
+          // webp key — otherwise a single failure poisons the slot for
+          // the lifetime of the process.
+          log.error("webp transcode failed", { tilePath, err });
+          return {
+            ok: true,
+            tile: { body: pngBuf, contentType: "image/png" },
+          };
+        }
+      }
+
+      const tile: CachedTile = {
+        body: pngBuf,
+        contentType: upstream.headers.get("content-type") ?? "image/png",
+      };
+      cacheSet(cacheKey, tile);
+      return { ok: true, tile };
+    } catch (err) {
+      log.error("upstream error", { tilePath, err });
+      return { ok: false, status: 502 };
+    }
   }
+
+  // Register the @2x route FIRST. path-to-regexp's `:y` capture is
+  // non-greedy and the `.png` literal is shared between both routes, so
+  // if the plain route were registered first, a request like
+  // `/tiles/hsl-map/13/4660/2378@2x.png` would match it with
+  // `:y = "2378@2x"` and the response would silently be a non-retina
+  // tile.
+  router.get("/tiles/:style/:z/:x/:y@2x.png", (req, res) => {
+    void handleTile(req, res, "@2x");
+  });
+  router.get("/tiles/:style/:z/:x/:y.png", (req, res) => {
+    void handleTile(req, res, "");
+  });
+
+  return {
+    router,
+    dispose: () => {
+      tileCache.clear();
+      inflight.clear();
+    },
+  };
 }

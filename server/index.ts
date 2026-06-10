@@ -7,7 +7,7 @@ import { startSseServer } from "./sse-server.ts";
 import { startRouteCache } from "./route-cache.ts";
 import { startStopCache } from "./stop-cache.ts";
 import { createDigitransitClient } from "./digitransit-client.ts";
-import { createTileProxy } from "./tile-proxy.ts";
+import { createTileProxy, type TileProxyHandle } from "./tile-proxy.ts";
 import type { Mode } from "./types.ts";
 import { settings } from "./settings.ts";
 import { logger } from "./logger.ts";
@@ -69,12 +69,13 @@ const digitransit = settings.digitransitApiKey
   ? createDigitransitClient(settings.digitransitApiKey)
   : null;
 
+let tileProxy: TileProxyHandle | null = null;
 if (settings.digitransitApiKey) {
-  const tiles = createTileProxy({
+  tileProxy = createTileProxy({
     apiKey: settings.digitransitApiKey,
     logger: logger.child({ component: "tile-proxy" }),
   });
-  app.use(tiles.router);
+  app.use(tileProxy.router);
 }
 
 interface ModePipeline {
@@ -183,6 +184,7 @@ const shutdown = (signal: NodeJS.Signals) => {
   }, 10_000);
 
   for (const p of pipelines) p.dispose();
+  tileProxy?.dispose();
   server.close((err) => {
     if (err) shutdownLog.error("http close error", { err });
   });
