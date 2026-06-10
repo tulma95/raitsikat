@@ -97,7 +97,15 @@ Astro.response.headers.set("Cache-Control", "public, max-age=60, must-revalidate
     </article>
   </noscript>
 
+  <!--
+    Visually-hidden copy for crawlers that execute JS (which never see the
+    <noscript> article). Duplicates the noscript text on purpose: only one
+    of the two is ever rendered to a given user.
+  -->
   <div class="seo-hidden">
+    <h1>{ms.noscriptH1}</h1>
+    <p>{ms.noscriptP1}</p>
+    <p>{ms.noscriptP2}</p>
     <p lang={locale}>{seoHiddenPrimaryText}</p>
     <p lang={otherLocale}>{seoHiddenSecondaryText}</p>
   </div>
