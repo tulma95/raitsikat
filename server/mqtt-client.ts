@@ -84,7 +84,10 @@ export function parseMessage(topic: string, payload: Buffer, now: number): Vehic
   if (!("oper" in vp) || typeof vp.oper !== "number") return null;
   if (!("veh" in vp) || typeof vp.veh !== "number") return null;
   if (!("desi" in vp) || typeof vp.desi !== "string") return null;
-  if (!("hdg" in vp) || typeof vp.hdg !== "number") return null;
+  // HFP v2 permits hdg null (GPS heading unknown); treat missing the same.
+  // Default to 0 rather than dropping an otherwise-valid position — rejecting
+  // froze the vehicle on the map until the 60s eviction.
+  const heading = "hdg" in vp && typeof vp.hdg === "number" ? vp.hdg : 0;
 
   return {
     id: `${vp.oper}/${vp.veh}`,
@@ -93,7 +96,7 @@ export function parseMessage(topic: string, payload: Buffer, now: number): Vehic
     directionId: rawDir === "1" ? 1 : 2,
     lat: vp.lat,
     lon: vp.long,
-    heading: vp.hdg,
+    heading,
     updatedAt: now,
   };
 }

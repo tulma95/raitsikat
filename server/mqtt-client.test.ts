@@ -30,10 +30,12 @@ describe("parseMessage", () => {
     assert.equal(parseMessage(t, vp(), 0), null);
   });
 
-  it("returns null when required VP fields are missing", () => {
+  it("returns null when required VP fields are missing; hdg is optional", () => {
     assert.equal(parseMessage(TOPIC, vp({ lat: undefined }), 0), null);
     assert.equal(parseMessage(TOPIC, vp({ desi: undefined }), 0), null);
-    assert.equal(parseMessage(TOPIC, vp({ hdg: undefined }), 0), null);
+    // HFP permits hdg null (GPS heading unknown) — defaults to 0.
+    assert.equal(parseMessage(TOPIC, vp({ hdg: undefined }), 0)?.heading, 0);
+    assert.equal(parseMessage(TOPIC, vp({ hdg: null }), 0)?.heading, 0);
   });
 
   it("returns null on invalid JSON payload", () => {
