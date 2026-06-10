@@ -73,8 +73,6 @@ function loadSelection(): void {
   recomputeShown();
 }
 
-loadSelection();
-
 function saveSelection(): void {
   try {
     // Intersect with the chips actually rendered so retired HSL lines don't
