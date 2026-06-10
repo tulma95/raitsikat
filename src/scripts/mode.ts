@@ -8,11 +8,9 @@
 
 import type { Mode } from "../../server/types.ts";
 
-const MODE_STORAGE_KEY = "raitsikat.activeMode";
-
 // The initial mode is authoritative from the URL: the server injects it as
 // `data-mode` on <html> so deep-linking /ratikat boots tram-first and
-// /bussit boots bus-first, regardless of any stale localStorage value.
+// /bussit boots bus-first.
 function readInitial(): Mode {
   const injected = document.documentElement.dataset.mode;
   if (injected === "tram" || injected === "bus") return injected;
@@ -24,7 +22,4 @@ export let activeMode: Mode = readInitial();
 export function setActiveMode(mode: Mode): void {
   if (mode !== "tram" && mode !== "bus") return;
   activeMode = mode;
-  try {
-    localStorage.setItem(MODE_STORAGE_KEY, mode);
-  } catch {}
 }
