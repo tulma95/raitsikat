@@ -26,9 +26,17 @@ function notePerf(kind: string, byteLen: number, count: number): void {
   hooks.note(kind, byteLen, count);
 }
 
-export function connect(mode: Mode): EventSource {
+export interface Connection {
+  es: EventSource;
+  // Clears the connection toast's pending timers and hides it. Must be called
+  // when this EventSource is abandoned — close() fires no events, so the
+  // tracker can't clean up on its own.
+  disposeToast: () => void;
+}
+
+export function connect(mode: Mode): Connection {
   const es = new EventSource(`/${mode}/events`);
-  trackConnection(es);
+  const disposeToast = trackConnection(es);
   es.addEventListener("snapshot", (ev) => {
     if (!(ev instanceof MessageEvent) || typeof ev.data !== "string") return;
     const data: string = ev.data;
@@ -57,5 +65,5 @@ export function connect(mode: Mode): EventSource {
       removeVehicle(parsed.id);
     }
   });
-  return es;
+  return { es, disposeToast };
 }

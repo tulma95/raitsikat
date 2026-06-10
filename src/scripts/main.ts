@@ -4,6 +4,7 @@
 import { sheetEl, modeTabsEl } from "./dom.ts";
 import { initStops, clearStops } from "./stops.ts";
 import { connect } from "./sse.ts";
+import type { Connection } from "./sse.ts";
 import { activeMode, setActiveMode } from "./mode.ts";
 import { saveAndClear, reloadForActiveMode } from "./filter.ts";
 import { clearAll as clearVehicles } from "./vehicles.ts";
@@ -51,19 +52,22 @@ function syncTabUi(): void {
   }
 }
 
-let currentEs: EventSource | null = null;
+let currentConn: Connection | null = null;
 
 function startForActiveMode(): void {
   reloadForActiveMode();
   initStops();
-  currentEs = connect(activeMode);
+  currentConn = connect(activeMode);
 }
 
 function switchMode(next: Mode): void {
   if (next === activeMode) return;
-  if (currentEs) {
-    currentEs.close();
-    currentEs = null;
+  if (currentConn) {
+    // close() fires no events, so the old connection's toast timers would
+    // never be cleared (or hidden) without an explicit dispose.
+    currentConn.disposeToast();
+    currentConn.es.close();
+    currentConn = null;
   }
   saveAndClear();          // persist selection for the OLD mode, drop chips
   // resetCull() BEFORE clearVehicles(): clearAll() re-arms the cull callback

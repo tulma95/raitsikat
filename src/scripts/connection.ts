@@ -1,9 +1,13 @@
 // Connection-state toast. EventSource auto-reconnects; this surfaces UI
 // only after a grace period so transient blips stay silent.
+//
+// Returns a dispose function: es.close() fires no events, so when the caller
+// replaces the EventSource (mode switch) it must dispose the old tracker or a
+// pending grace/escalate timer would later show a toast that nothing can hide.
 
 import { t } from "./i18n.ts";
 
-export function trackConnection(es: EventSource): void {
+export function trackConnection(es: EventSource): () => void {
   const el = document.getElementById("conn-toast")!;
   const label = el.querySelector<HTMLElement>(".conn-toast__label")!;
   let graceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -45,4 +49,9 @@ export function trackConnection(es: EventSource): void {
       }, 30_000);
     }, 2_000);
   });
+
+  return () => {
+    clearTimers();
+    hide();
+  };
 }
