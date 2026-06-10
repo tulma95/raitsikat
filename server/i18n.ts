@@ -33,6 +33,7 @@ export interface Strings {
   vehicleModeBus: string;
   loading: string;
   noDepartures: string;
+  departuresError: string;
   unknownStop: string;
   reconnecting: string;
   offline: string;
@@ -65,6 +66,7 @@ export const CLIENT_KEYS = [
   "vehicleModeBus",
   "loading",
   "noDepartures",
+  "departuresError",
   "unknownStop",
   "reconnecting",
   "offline",
@@ -91,6 +93,7 @@ const fi: Strings = {
   vehicleModeBus: "bussia",
   loading: "Ladataan…",
   noDepartures: "Ei lähtöjä",
+  departuresError: "Lähtöjä ei voitu hakea",
   unknownStop: "Tuntematon pysäkki",
   reconnecting: "Yhdistetään uudelleen…",
   offline: "Yhteyttä ei ole",
@@ -114,6 +117,7 @@ const en: Strings = {
   vehicleModeBus: "buses",
   loading: "Loading…",
   noDepartures: "No departures",
+  departuresError: "Couldn't load departures",
   unknownStop: "Unknown stop",
   reconnecting: "Reconnecting to live feed…",
   offline: "Offline — waiting for connection",
@@ -227,6 +231,7 @@ export function pickClientStrings(s: Strings): ClientStrings {
     vehicleModeBus: s.vehicleModeBus,
     loading: s.loading,
     noDepartures: s.noDepartures,
+    departuresError: s.departuresError,
     unknownStop: s.unknownStop,
     reconnecting: s.reconnecting,
     offline: s.offline,

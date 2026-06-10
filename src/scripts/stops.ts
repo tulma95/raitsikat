@@ -139,14 +139,19 @@ function buildStopMarker(stop: TramStop, mode: Mode): L.CircleMarker {
     const myId = ++requestId;
 
     fetch(`/${mode}/departures?id=${encodeURIComponent(stop.id)}`)
-      .then((res) => (res.ok ? res.json() : []))
+      .then((res) => {
+        // Throw on non-2xx so the failure reaches .catch — a server error is
+        // not the same as a genuinely-empty departure list.
+        if (!res.ok) throw new Error(`departures fetch failed: ${res.status}`);
+        return res.json();
+      })
       .then((departures: unknown) => {
         if (myId !== requestId) return; // a newer open superseded us
         renderDepartures(list, Array.isArray(departures) ? departures.filter(isDeparture) : []);
       })
       .catch(() => {
         if (myId !== requestId) return;
-        renderPlaceholder(list, t("noDepartures"));
+        renderPlaceholder(list, t("departuresError"));
       });
   });
 
@@ -169,19 +174,36 @@ function syncStopLayer(): void {
 }
 
 // If /stops responds before the server-side warmup has populated the cache,
-// the response is an empty array. Retry once after a short delay so a user
-// who lands during the cold-boot window doesn't have to refresh.
+// the response is an empty array (or the fetch fails outright). Retry once
+// after a short delay so a user who lands during the cold-boot window
+// doesn't have to refresh.
 const STOPS_RETRY_DELAY_MS = 30_000;
 
+// Generation counter, bumped by clearStops (mode switch). `mode !==
+// activeMode` alone isn't enough: tram → bus → tram while a fetch or the
+// retry timer is in flight would pass that check and add the same stop set
+// twice. Mirrors the per-request invalidation in route-overlay.ts.
+let stopsGeneration = 0;
+let stopsRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
 function loadStops(mode: Mode, retried: boolean): void {
+  const myGeneration = stopsGeneration;
+  const scheduleRetry = () => {
+    if (retried || stopsRetryTimer !== null) return;
+    stopsRetryTimer = setTimeout(() => {
+      stopsRetryTimer = null;
+      if (myGeneration !== stopsGeneration) return;
+      loadStops(mode, true);
+    }, STOPS_RETRY_DELAY_MS);
+  };
   fetch(`/${mode}/stops`)
     .then((res) => (res.ok ? res.json() : []))
     .then((stops: unknown) => {
-      // If the user already flipped modes during the in-flight fetch, drop
-      // these stops — they belong to a stale mode.
-      if (mode !== activeMode) return;
+      // A mode switch happened during the in-flight fetch — drop these
+      // stops, they belong to a stale generation.
+      if (myGeneration !== stopsGeneration) return;
       if (!Array.isArray(stops) || stops.length === 0) {
-        if (!retried) setTimeout(() => loadStops(mode, true), STOPS_RETRY_DELAY_MS);
+        scheduleRetry();
         return;
       }
       for (const stop of stops) {
@@ -191,13 +213,21 @@ function loadStops(mode: Mode, retried: boolean): void {
       syncStopLayer();
     })
     .catch(() => {
-      // /stops is best-effort — silently absent on failure.
+      // /stops is best-effort — no error UI, but give it the same single
+      // retry as the cold-boot empty response.
+      if (myGeneration !== stopsGeneration) return;
+      scheduleRetry();
     });
 }
 
 // Drop every stop marker. Used on mode switch — the next initStops() pulls
 // the new mode's stop set.
 export function clearStops(): void {
+  stopsGeneration++;
+  if (stopsRetryTimer !== null) {
+    clearTimeout(stopsRetryTimer);
+    stopsRetryTimer = null;
+  }
   stopsLayer.clearLayers();
 }
 
