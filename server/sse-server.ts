@@ -15,7 +15,7 @@ export interface SseServerHandle {
 
 interface Client {
   res: Response;
-  writeEvent: (event: string, data: unknown) => void;
+  writeEvent: (event: string, json: string) => void;
 }
 
 // We broadcast the full vehicle firehose to every client (the client culls by
@@ -40,9 +40,12 @@ export function startSseServer(opts: SseServerOptions): SseServerHandle {
   };
 
   const broadcast = (event: string, data: unknown) => {
+    // Stringify once per broadcast, not once per client — the firehose goes
+    // to every client, so per-client JSON.stringify is O(N) wasted work.
+    const json = JSON.stringify(data);
     for (const client of clients) {
       try {
-        client.writeEvent(event, data);
+        client.writeEvent(event, json);
         if (client.res.writableLength > MAX_BUFFERED_BYTES) drop(client);
       } catch {
         clients.delete(client);
@@ -68,10 +71,10 @@ export function startSseServer(opts: SseServerOptions): SseServerHandle {
 
   const router = Router();
   router.get(path, (req: Request, res: Response) => {
-    let nextId = 1;
-
-    const writeEvent = (event: string, data: unknown) => {
-      res.write(`id: ${nextId++}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    // No `id:` field — nothing implements Last-Event-ID resume; a
+    // reconnecting client always gets a fresh snapshot.
+    const writeEvent = (event: string, json: string) => {
+      res.write(`event: ${event}\ndata: ${json}\n\n`);
     };
 
     const client: Client = { res, writeEvent };
@@ -83,7 +86,7 @@ export function startSseServer(opts: SseServerOptions): SseServerHandle {
 
     clients.add(client);
     try {
-      writeEvent("snapshot", { vehicles: opts.state.snapshot() });
+      writeEvent("snapshot", JSON.stringify({ vehicles: opts.state.snapshot() }));
     } catch {
       clients.delete(client);
     }
