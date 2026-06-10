@@ -2,6 +2,14 @@ import type { Mode } from "./types.ts";
 
 const ENDPOINT = "https://api.digitransit.fi/routing/v2/hsl/gtfs/v1";
 
+// Cap how long we wait on Digitransit before giving up (mirrors the tile
+// proxy's upstream timeout, but larger — warmup queries like the full stop
+// list are much bigger than a tile). Without this a stalled upstream pins
+// lazy /route and /departures requests and keeps the refill scheduler's
+// in-flight flag set, freezing warmups. The abort surfaces as a rejection
+// from fetch(), so existing catch paths handle it like any other failure.
+const UPSTREAM_TIMEOUT_MS = 15_000;
+
 const MODE_TO_GTFS: Record<Mode, "TRAM" | "BUS"> = {
   tram: "TRAM",
   bus: "BUS",
@@ -139,6 +147,7 @@ export function createDigitransitClient(apiKey: string): DigitransitClient {
         "digitransit-subscription-key": apiKey,
       },
       body: JSON.stringify({ query, variables }),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     if (!res.ok) {
       throw new Error(`Digitransit HTTP ${res.status}: ${await res.text()}`);
