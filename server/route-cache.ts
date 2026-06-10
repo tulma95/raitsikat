@@ -162,8 +162,10 @@ export function startRouteCache(opts: RouteCacheOptions): RouteCacheHandle {
       });
       res.json({ polyline: poly });
     } catch (err) {
+      // 502, not 200 with a null polyline — the client must be able to tell
+      // a transient upstream failure from "this route has no geometry".
       log.error("lazy fetch failed", { routeId: lookupId, dir: dirId, err });
-      res.json({ polyline: null });
+      res.status(502).json({ error: "upstream fetch failed" });
     }
   });
 

@@ -103,8 +103,10 @@ export function startStopCache(opts: StopCacheOptions): StopCacheHandle {
       });
       res.json(departures);
     } catch (err) {
+      // 502, not 200 with [] — the client must be able to tell a transient
+      // upstream failure from "no departures" (it shows a retryable error).
       log.error("departures fetch failed", { stopId, err });
-      res.json([]);
+      res.status(502).json({ error: "upstream fetch failed" });
     }
   });
 
