@@ -149,13 +149,12 @@ app.get("/healthz", (_req, res) => {
       ];
     }),
   );
-  const fresh = pipelines.every(
-    (p) =>
-      p.mqtt.connected &&
-      p.mqtt.lastMessageAt !== null &&
-      Date.now() - p.mqtt.lastMessageAt < settings.mqttLivenessMs,
-  );
-  res.status(fresh ? 200 : 503).json(modes);
+  // Liveness = broker connectivity only. The HFP topic is journey/ongoing/vp,
+  // so a legitimately quiet feed (no journeys at night) must not 503 and
+  // restart-loop a container. lastMqttMessageAt stays in the body for
+  // observability.
+  const healthy = pipelines.every((p) => p.mqtt.connected);
+  res.status(healthy ? 200 : 503).json(modes);
 });
 
 // Astro SSR handler is mounted LAST: it owns only `/`, `/en`, `/fi`,
