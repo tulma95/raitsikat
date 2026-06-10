@@ -30,8 +30,15 @@ export async function showRoute(routeId: string, dirId: number): Promise<void> {
       `/${activeMode}/route?id=${encodeURIComponent(routeId)}&dir=${dirId}`,
     );
     if (!res.ok) return;
-    const body: { polyline?: string } = await res.json();
-    polyline = body.polyline;
+    const body: unknown = await res.json();
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      "polyline" in body &&
+      typeof body.polyline === "string"
+    ) {
+      polyline = body.polyline;
+    }
   } catch {
     return;
   }
