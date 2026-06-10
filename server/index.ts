@@ -18,6 +18,23 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
+// Astro is configured with `trailingSlash: "never"`, so `/ratikat/` would
+// 404 in the SSR handler. 301 any GET path ending in "/" (except "/"
+// itself) to the slashless form, preserving the query string. Leading
+// slashes are collapsed too so `//host/` can't become a protocol-relative
+// open redirect.
+app.use((req, res, next) => {
+  const queryStart = req.originalUrl.indexOf("?");
+  const path = queryStart === -1 ? req.originalUrl : req.originalUrl.slice(0, queryStart);
+  if (req.method !== "GET" || path.length <= 1 || !path.endsWith("/")) {
+    next();
+    return;
+  }
+  const search = queryStart === -1 ? "" : req.originalUrl.slice(queryStart);
+  const target = "/" + path.replace(/^\/+|\/+$/g, "");
+  res.redirect(301, target + search);
+});
+
 // `/`, `/en`, `/fi`, `/sitemap.xml` are owned by the Astro SSR handler
 // (mounted last). Static assets are served from the Astro build's client
 // dir; `index: false` keeps express.static from ever answering `/` with a
