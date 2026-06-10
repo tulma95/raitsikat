@@ -20,8 +20,8 @@ const app = express();
 
 // `/`, `/en`, `/fi`, `/sitemap.xml` are owned by the Astro SSR handler
 // (mounted last). Static assets are served from the Astro build's client
-// dir; `index: false` keeps express.static from serving the stale,
-// un-templated `dist/client/index.html` for `/` (Astro must own `/`).
+// dir; `index: false` keeps express.static from ever answering `/` with a
+// stray index.html (Astro must own `/`).
 app.use(express.static(join(__dirname, "..", "dist", "client"), { index: false }));
 
 if (!settings.digitransitApiKey) {
