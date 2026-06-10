@@ -49,6 +49,14 @@ export function startRouteCache(opts: RouteCacheOptions): RouteCacheHandle {
   let scheduler: { stop: () => void } | null = null;
   if (opts.digitransit) {
     const digitransit = opts.digitransit;
+    // Pattern fetches still owed in the current refresh cycle, keyed like the
+    // cache. `null` means "start a fresh cycle": re-run listRoutes and queue
+    // every route × direction. A failed fetch stays pending, so the next short
+    // tick retries ONLY the failures instead of re-running the whole cycle
+    // (bus mode is ~600 routes × 2 dirs — one flaky fetch must not re-burn
+    // the full quota every 5 minutes). The gate only advances once the cycle
+    // drains, preserving the warmup+gate semantics in cache-helpers.
+    let pending: Map<string, { routeId: string; dir: 1 | 2 }> | null = null;
     scheduler = startRefillScheduler({
       intervalMs: refreshIntervalMs,
       gateMs: refreshGateMs,
@@ -56,54 +64,57 @@ export function startRouteCache(opts: RouteCacheOptions): RouteCacheHandle {
       logger: log,
       now: opts.now,
       refill: async () => {
-        let allOk = true;
-        let updated = 0;
-        try {
-          const routes = await digitransit.listRoutes(opts.mode);
-          knownRouteIds.clear();
-          for (const r of routes) knownRouteIds.add(r.id);
-          // Drop cached polylines for routes that no longer exist, so the
-          // cache doesn't grow unbounded as HSL retires/renames route ids.
-          for (const k of cache.keys()) {
-            const routeId = k.slice(0, k.lastIndexOf("/"));
-            if (!knownRouteIds.has(routeId)) cache.delete(k);
-          }
-          for (const route of routes) {
-            for (const dir of [1, 2] as const) {
-              try {
-                const poly = await digitransit.fetchPatternGeometry(route.id, dir);
-                if (poly) {
-                  cache.set(key(route.id, dir), poly);
-                  updated++;
-                }
-              } catch (err) {
-                allOk = false;
-                log.error("pattern fetch failed", {
-                  routeId: route.id,
-                  dir,
-                  err,
-                });
+        if (pending === null) {
+          try {
+            const routes = await digitransit.listRoutes(opts.mode);
+            knownRouteIds.clear();
+            for (const r of routes) knownRouteIds.add(r.id);
+            // Drop cached polylines for routes that no longer exist, so the
+            // cache doesn't grow unbounded as HSL retires/renames route ids.
+            for (const k of cache.keys()) {
+              const routeId = k.slice(0, k.lastIndexOf("/"));
+              if (!knownRouteIds.has(routeId)) cache.delete(k);
+            }
+            pending = new Map();
+            for (const route of routes) {
+              for (const dir of [1, 2] as const) {
+                pending.set(key(route.id, dir), { routeId: route.id, dir });
               }
             }
+          } catch (err) {
+            log.error("route list fetch failed, will retry", {
+              retryInSec: refreshIntervalMs / 1000,
+              err,
+            });
+            return false;
           }
-        } catch (err) {
-          allOk = false;
-          log.error("route list fetch failed", { err });
         }
 
-        if (allOk) {
-          log.info("refreshed patterns", { updated, cacheSize: cache.size });
-        } else if (updated > 0) {
-          log.warn("partial refresh, will retry", {
-            updated,
-            retryInSec: refreshIntervalMs / 1000,
-          });
-        } else {
-          log.warn("refresh failed, will retry", {
-            retryInSec: refreshIntervalMs / 1000,
-          });
+        let updated = 0;
+        for (const [k, { routeId, dir }] of pending) {
+          try {
+            const poly = await digitransit.fetchPatternGeometry(routeId, dir);
+            if (poly) {
+              cache.set(k, poly);
+              updated++;
+            }
+            pending.delete(k);
+          } catch (err) {
+            log.error("pattern fetch failed", { routeId, dir, err });
+          }
         }
-        return allOk;
+
+        if (pending.size === 0) {
+          pending = null; // next gated tick starts a fresh cycle
+          log.info("refreshed patterns", { updated, cacheSize: cache.size });
+          return true;
+        }
+        log.warn("partial refresh, will retry failed patterns", {
+          updated,
+          remaining: pending.size,
+          retryInSec: refreshIntervalMs / 1000,
+        });
+        return false;
       },
     });
   }
