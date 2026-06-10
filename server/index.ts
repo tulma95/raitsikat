@@ -35,6 +35,25 @@ app.use((req, res, next) => {
   res.redirect(301, target + search);
 });
 
+// robots.txt is served dynamically so the sitemap URL derives from
+// `settings.siteOrigin` like everything else, and so crawlers stay out of
+// the SSE / tile / health endpoints. Mounted BEFORE express.static so a
+// stale `dist/client/robots.txt` from an old build can never shadow it.
+app.get("/robots.txt", (_req, res) => {
+  res.type("text/plain").send(
+    [
+      "User-agent: *",
+      "Disallow: /tram/events",
+      "Disallow: /bus/events",
+      "Disallow: /tiles/",
+      "Disallow: /healthz",
+      "Allow: /",
+      `Sitemap: ${settings.siteOrigin}/sitemap.xml`,
+      "",
+    ].join("\n"),
+  );
+});
+
 // `/`, `/en`, `/fi`, `/sitemap.xml` are owned by the Astro SSR handler
 // (mounted last). Static assets are served from the Astro build's client
 // dir; `index: false` keeps express.static from ever answering `/` with a

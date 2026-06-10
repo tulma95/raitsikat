@@ -1,3 +1,0 @@
-User-agent: *
-Allow: /
-Sitemap: https://raitsikat.rigster.cv/sitemap.xml
