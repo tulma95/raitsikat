@@ -158,11 +158,13 @@ update — don't switch back to `setIcon` without checking. It also skips
 the DOM write when heading/line are unchanged (cached on the marker as
 `_lastHeading` / `_lastLine`).
 
-**Entry animation must be wired before `addTo`.** The one-shot
-`tram-marker--enter` class is stripped by an `add` listener on the
-marker. Leaflet fires `add` synchronously inside `addTo`, so the
-listener must be attached first; otherwise the class never gets removed
-and re-additions (e.g. viewport-cull) re-trigger the animation.
+**Entry animation must be wired before `addTo`.** A `once("add")` hook
+installs an `animationend` listener that strips the one-shot
+`tram-marker--enter` class. Leaflet fires `add` synchronously inside
+`addTo`, so the hook must be attached first. Known gap: the hook covers
+only the first add — a cull/filter re-add rebuilds the icon DOM from the
+original creation-time HTML, so the animation replays and stale
+heading/line survive until `_lastHeading`/`_lastLine` change.
 
 **Viewport culling (bus mode).** `viewport-cull.js` gates
 `marker.addTo` / `removeLayer` on the map's padded bounds (20% margin).
