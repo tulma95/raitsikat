@@ -7,6 +7,7 @@ import {
   buildJsonLd,
   safeJsonForScript,
   hreflangPaths,
+  OG_IMAGE_PATH,
   SEO_HIDDEN,
 } from "../lib/seo.ts";
 
@@ -58,7 +59,7 @@ Astro.response.headers.set("Cache-Control", "public, max-age=60, must-revalidate
   <meta property="og:title" content={ms.ogTitle}>
   <meta property="og:description" content={ms.ogDescription}>
   <meta property="og:url" content={canonicalUrl}>
-  <meta property="og:image" content={`${origin}/icons/og-image.png`}>
+  <meta property="og:image" content={`${origin}${OG_IMAGE_PATH}`}>
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content={ms.ogImageAlt}>
@@ -67,7 +68,7 @@ Astro.response.headers.set("Cache-Control", "public, max-age=60, must-revalidate
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content={ms.twitterTitle}>
   <meta name="twitter:description" content={ms.twitterDescription}>
-  <meta name="twitter:image" content={`${origin}/icons/og-image.png`}>
+  <meta name="twitter:image" content={`${origin}${OG_IMAGE_PATH}`}>
   <meta name="twitter:image:alt" content={ms.ogImageAlt}>
   <script type="application/ld+json" is:inline set:html={jsonLd}></script>
 

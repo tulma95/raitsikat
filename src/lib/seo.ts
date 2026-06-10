@@ -21,7 +21,7 @@ export const SEO_HIDDEN: Record<Mode, Record<Locale, string>> = {
 // Shared OG / Twitter card image path (relative to the site origin). Same
 // image for both locales; consumed by the meta tags and the JSON-LD
 // `screenshot` field.
-export const OG_IMAGE_PATH = "/icons/og-image.png";
+export const OG_IMAGE_PATH = "/icons/og-image.jpg";
 
 // Escape just enough for safe insertion into a `<script>` block. The
 // strings come from our own dict, but we still close-tag-protect and
