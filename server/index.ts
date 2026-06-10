@@ -185,10 +185,16 @@ const shutdown = (signal: NodeJS.Signals) => {
 
   for (const p of pipelines) p.dispose();
   tileProxy?.dispose();
-  server.close((err) => {
-    if (err) shutdownLog.error("http close error", { err });
+  // Wait for in-flight HTTP responses too — exiting when only MQTT has
+  // settled would cut responses mid-write. Never rejects: the error is
+  // logged here so the allSettled loop below stays mqtt-only.
+  const serverClosed = new Promise<void>((resolve) => {
+    server.close((err) => {
+      if (err) shutdownLog.error("http close error", { err });
+      resolve();
+    });
   });
-  Promise.allSettled(pipelines.map((p) => p.mqtt.end()))
+  Promise.allSettled([...pipelines.map((p) => p.mqtt.end()), serverClosed])
     .then((results) => {
       for (const r of results) {
         if (r.status === "rejected") {
