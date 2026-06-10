@@ -21,8 +21,6 @@ export interface Strings {
   vehicleModeAria: string;
   lineFilterAria: string;
   mapAria: string;
-  // initial vehicle count placeholder ("0 trams" / "0 ratikkaa")
-  initialCount: string;
   // Language switch (anchor → other locale). `langSwitchAria` is in the
   // CURRENT page's language; the anchor's visible text + `lang`/`hreflang`
   // describe the TARGET locale. The actual href is mode-dependent and lives
@@ -86,7 +84,6 @@ const fi: Strings = {
   vehicleModeAria: "Kulkuneuvotyyppi",
   lineFilterAria: "Näytä tai piilota linjoja",
   mapAria: "Helsingin joukkoliikenteen live-kartta",
-  initialCount: "0 ratikkaa",
   langSwitchTargetLocale: "en",
   langSwitchText: "EN",
   langSwitchAria: "Vaihda kieli englanniksi",
@@ -110,7 +107,6 @@ const en: Strings = {
   vehicleModeAria: "Vehicle mode",
   lineFilterAria: "Show or hide lines",
   mapAria: "Live map of Helsinki public transport",
-  initialCount: "0 trams",
   langSwitchTargetLocale: "fi",
   langSwitchText: "FI",
   langSwitchAria: "Switch language to Finnish",
@@ -211,6 +207,15 @@ export const modeStrings: Record<Locale, Record<Mode, ModeStrings>> = {
 // Typed accessor for the per-(locale × mode) SEO strings.
 export function getModeStrings(locale: Locale, mode: Mode): ModeStrings {
   return modeStrings[locale][mode];
+}
+
+// Initial "0 ratikkaa" / "0 buses" placeholder for the count badges,
+// composed from the same nouns the client uses at runtime
+// (`vehicleCountLabel` in src/scripts/i18n.ts), so the SSR placeholder
+// and the live count can't drift apart.
+export function initialCountLabel(locale: Locale, mode: Mode): string {
+  const s = translations[locale];
+  return `0 ${mode === "bus" ? s.vehicleModeBus : s.vehicleModeTram}`;
 }
 
 export function pickClientStrings(s: Strings): ClientStrings {

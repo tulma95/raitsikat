@@ -1,5 +1,5 @@
 ---
-import { translations, getModeStrings, pickClientStrings } from "../../server/i18n.ts";
+import { translations, getModeStrings, initialCountLabel, pickClientStrings } from "../../server/i18n.ts";
 import type { Locale } from "../../server/i18n.ts";
 import type { Mode } from "../../server/types.ts";
 import { settings } from "../../server/settings.ts";
@@ -18,6 +18,7 @@ interface Props {
 const { locale, mode } = Astro.props;
 const s = translations[locale];
 const ms = getModeStrings(locale, mode);
+const initialCount = initialCountLabel(locale, mode);
 const origin = settings.siteOrigin;
 
 // Same-mode hreflang alternates; the current locale's path is the canonical.
@@ -124,7 +125,7 @@ Astro.response.headers.set("Cache-Control", "public, max-age=60, must-revalidate
       <a href={tramHref} data-mode="tram" aria-current={mode === "tram" ? "page" : undefined}>{s.tabTrams}</a>
       <a href={busHref} data-mode="bus" aria-current={mode === "bus" ? "page" : undefined}>{s.tabBuses}</a>
     </nav>
-    <span id="vehicle-count-top" class="topbar__count" data-vehicle-count>{s.initialCount}</span>
+    <span id="vehicle-count-top" class="topbar__count" data-vehicle-count>{initialCount}</span>
     <a id="lang-switch"
        href={ms.langSwitchHref}
        hreflang={s.langSwitchTargetLocale}
@@ -136,7 +137,7 @@ Astro.response.headers.set("Cache-Control", "public, max-age=60, must-revalidate
     <button id="sheet-toggle" aria-expanded="false" aria-controls="sheet-body">
       <span class="sheet__handle" aria-hidden="true"></span>
       <span class="sheet__title">{s.sheetLines}</span>
-      <span class="sheet__count" id="vehicle-count" data-vehicle-count>{s.initialCount}</span>
+      <span class="sheet__count" id="vehicle-count" data-vehicle-count>{initialCount}</span>
     </button>
     <div id="sheet-body">
       <div id="line-filter" role="group" aria-label={s.lineFilterAria}></div>
