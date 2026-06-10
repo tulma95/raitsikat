@@ -90,8 +90,15 @@ export function upsertVehicle(vehicle: Vehicle): void {
     // Attach BEFORE addTo: Leaflet fires `add` synchronously inside addTo,
     // so a listener attached after would miss the event and never strip the
     // one-shot enter class.
+    //
+    // `on`, not `once`: every cull/filter re-add rebuilds the icon DOM from
+    // the creation-time HTML, so the enter class is back (deliberate — the
+    // marker IS newly appearing) and needs a fresh animationend listener on
+    // the new node. The rebuilt DOM also shows creation-time heading/line, so
+    // reset the _last* caches and rewrite it from the current vehicle —
+    // otherwise updateMarkerInPlace would skip the corrective write.
     const m = marker;
-    m.once("add", () => {
+    m.on("add", () => {
       const root = m._icon && m._icon.firstElementChild;
       if (!root) return;
       root.addEventListener(
@@ -99,18 +106,31 @@ export function upsertVehicle(vehicle: Vehicle): void {
         () => root.classList.remove("tram-marker--enter"),
         { once: true },
       );
+      m._lastHeading = undefined;
+      m._lastLine = undefined;
+      const current = vehiclesById.get(vehicle.id);
+      if (current) updateMarkerInPlace(m, current);
     });
     if (shouldShow(vehicle)) marker.addTo(map);
-  } else {
+  } else if (map.hasLayer(marker)) {
     animateTo(marker, vehicle.lat, vehicle.lon);
     // Mutate the existing DOM instead of replacing the icon — this avoids
     // replaying the entry animation and the perceived "blink" on every tick.
+    // (Fallback for the shouldn't-happen case of an on-map marker with no
+    // icon element.)
     if (!updateMarkerInPlace(marker, vehicle)) {
       marker.setIcon(makeIcon(vehicle));
     }
     // The vehicle may have crossed the viewport edge or changed to a
     // filtered-out line since the last tick; the cull callback only fires on
     // map move, so reconcile here too.
+    reconcileMarker(vehicle, marker);
+  } else {
+    // Off-map (culled / filtered out): no DOM exists, so skip icon work —
+    // the on-add hook above rewrites the rebuilt DOM when it reappears — and
+    // jump the position instead of tweening an invisible marker for 1s.
+    stopAnimating(marker);
+    marker.setLatLng([vehicle.lat, vehicle.lon]);
     reconcileMarker(vehicle, marker);
   }
   updateCount();
