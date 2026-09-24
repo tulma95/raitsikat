@@ -3,7 +3,7 @@
 // /stops is fetched once at startup. Each stop becomes a small circle marker
 // in `stopsPane`. The layer is attached only at zoom >= 14 so the dots don't
 // clutter the city-wide view. Clicking a stop opens a popup that fetches
-// /departures?id=<id> on every open. Stop interactions are independent of
+// /departures?id=<id> on open and refreshes while open. Stop interactions are independent of
 // the chip filter / line-isolation state.
 
 import L from "leaflet";
@@ -14,6 +14,7 @@ import { t } from "./i18n.ts";
 import type { Mode } from "../../server/types.ts";
 import type { TramStop, Departure } from "./types.ts";
 import { isTramStop, isDeparture } from "./types.ts";
+import { startDepartureRefresh } from "./departure-refresh.ts";
 
 // Hide departures further than this in the future. The popup's row count is
 // bounded server-side (numberOfDepartures: 6 in digitransit-client.ts); the
@@ -110,9 +111,12 @@ function buildStopMarker(stop: TramStop, mode: Mode): L.CircleMarker {
     fillOpacity: 1,
   });
 
-  // Per-marker request id so a slow /departures response can't overwrite a
-  // newer one (e.g. user reopens the popup quickly).
-  let requestId = 0;
+  let stopRefresh: (() => void) | null = null;
+  const disposeRefresh = () => {
+    stopRefresh?.();
+    stopRefresh = null;
+  };
+  marker.on("popupclose remove", disposeRefresh);
 
   marker.bindPopup(
     () => buildStopPopupRoot(stop),
@@ -129,6 +133,7 @@ function buildStopMarker(stop: TramStop, mode: Mode): L.CircleMarker {
   );
 
   marker.on("popupopen", (ev) => {
+    disposeRefresh();
     if (!("popup" in ev) || !(ev.popup instanceof L.Popup)) return;
     const popupEl = ev.popup.getElement();
     if (!popupEl) return;
@@ -136,23 +141,20 @@ function buildStopMarker(stop: TramStop, mode: Mode): L.CircleMarker {
     if (!list) return;
 
     renderPlaceholder(list, t("loading"));
-    const myId = ++requestId;
-
-    fetch(`/${mode}/departures?id=${encodeURIComponent(stop.id)}`)
-      .then((res) => {
-        // Throw on non-2xx so the failure reaches .catch — a server error is
-        // not the same as a genuinely-empty departure list.
+    stopRefresh = startDepartureRefresh({
+      load: async (signal) => {
+        const res = await fetch(`/${mode}/departures?id=${encodeURIComponent(stop.id)}`, {
+          signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]),
+          cache: "no-store",
+        });
         if (!res.ok) throw new Error(`departures fetch failed: ${res.status}`);
-        return res.json();
-      })
-      .then((departures: unknown) => {
-        if (myId !== requestId) return; // a newer open superseded us
-        renderDepartures(list, Array.isArray(departures) ? departures.filter(isDeparture) : []);
-      })
-      .catch(() => {
-        if (myId !== requestId) return;
-        renderPlaceholder(list, t("departuresError"));
-      });
+        const departures: unknown = await res.json();
+        if (!Array.isArray(departures)) throw new Error("Invalid departures response");
+        return departures.filter(isDeparture);
+      },
+      render: (departures) => renderDepartures(list, departures),
+      error: () => renderPlaceholder(list, t("departuresError")),
+    });
   });
 
   return marker;

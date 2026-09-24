@@ -21,7 +21,6 @@ L.tileLayer("/tiles/hsl-map/{z}/{x}/{y}{r}.png", {
   zoomOffset: -1,
   maxZoom: 19,
   minZoom: 12,
-  bounds: HELSINKI_BOUNDS,
   attribution:
     'Data: <a href="https://hsl.fi/en/hsl/open-data" target="_blank" rel="noopener">HSL HFP</a>' +
     ' · Map: <a href="https://digitransit.fi/" target="_blank" rel="noopener">Digitransit</a>,' +

@@ -79,6 +79,11 @@ deep-link and full-navigate. With JS, `main.ts` intercepts a plain
 left-click (no modifier / left button only), does the instant in-place
 `switchMode()` + `history.pushState()`, and handles `popstate` so
 Back/forward follows the URL's mode. No `role="tab"`/`aria-selected`.
+The last mode is stored in `localStorage` as `raitsikat.mode`. On startup,
+a valid saved mode overrides the launch page's mode before stops/SSE load;
+`replaceState` synchronizes the URL while preserving its query and fragment.
+Without a saved preference (or storage access), the page's mode is used.
+Mode changes also update `html[data-mode]` and the language-switch href.
 
 Because the runtime imports the prebuilt `dist/server/entry.mjs`,
 **`npm run build` must run before the server starts** (the Docker image
@@ -145,11 +150,20 @@ selection under the old mode, close the SSE, clear vehicles/route/stops,
 flip `activeMode`, reload the new mode's selection, then reconnect. Don't
 fan this out to a pub-sub pattern — the strict ordering is the point.
 
-**Per-request invalidation.** Both `route-overlay.js` and `stops.js`
-maintain a local counter that's bumped on every user action; in-flight
-fetches check the counter on resolution and drop their result if a newer
-action superseded them. Mirror this when adding any other async-on-click
-flow.
+**Per-request invalidation.** `route-overlay.ts` and stop-list loading in
+`stops.ts` use generation counters to discard superseded responses.
+Open stop popups use `departure-refresh.ts`: fetch immediately and every
+30 seconds, re-render countdowns every second, and skip overlapping requests.
+Popup close or marker removal disposes the session, aborts its request, and
+clears both timers. Closed sessions ignore late results, including failures.
+Requests time out after 20 seconds; errors remain visible until a successful
+refresh. Mirror this cleanup when adding async-on-click flows.
+
+**Initial user location.** `location.ts` centers at zoom 15 (or the current
+zoom if closer) on the first successful GPS fix per page visit. Later fixes
+move only the position dot and accuracy circle. Permission changes to granted
+restart the watch where the Permissions API is available. The initial map
+bounds expand if necessary to include the user; tiles aren't city-bounded.
 
 **In-place marker DOM update.** `vehicles.js::updateMarkerInPlace`
 mutates the existing icon DOM instead of rebuilding it. Rebuilding

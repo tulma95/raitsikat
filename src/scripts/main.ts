@@ -32,8 +32,8 @@ syncSheetHeight();
 
 // (locale, mode) → URL path. The mode switcher links carry these hrefs in
 // the SSR markup; this mirrors them so pushState/popstate stay in sync.
-function pathFor(mode: Mode): string {
-  if (currentLocale === "en") return mode === "bus" ? "/en/buses" : "/en/trams";
+function pathFor(mode: Mode, locale = currentLocale): string {
+  if (locale === "en") return mode === "bus" ? "/en/buses" : "/en/trams";
   return mode === "bus" ? "/bussit" : "/ratikat";
 }
 
@@ -43,6 +43,13 @@ function modeFromPath(pathname: string): Mode {
 }
 
 function syncTabUi(): void {
+  document.documentElement.dataset.mode = activeMode;
+  document.getElementById("lang-switch")?.setAttribute(
+    "href", pathFor(activeMode, currentLocale === "en" ? "fi" : "en"),
+  );
+  try {
+    localStorage.setItem("raitsikat.mode", activeMode);
+  } catch { /* Storage may be disabled. Navigation still works. */ }
   for (const link of modeTabsEl.querySelectorAll<HTMLElement>("a[data-mode]")) {
     if (link.getAttribute("data-mode") === activeMode) {
       link.setAttribute("aria-current", "page");
@@ -108,6 +115,15 @@ window.addEventListener("popstate", () => {
   switchMode(modeFromPath(location.pathname));
 });
 
+// Restore before opening a stream or loading stops, so startup only loads
+// the preferred mode. Replace the launch URL rather than adding a Back entry.
+try {
+  const saved = localStorage.getItem("raitsikat.mode");
+  if (saved === "tram" || saved === "bus") {
+    setActiveMode(saved);
+    history.replaceState(history.state, "", pathFor(saved) + location.search + location.hash);
+  }
+} catch { /* Keep the URL's mode when storage is unavailable. */ }
 syncTabUi();
 startForActiveMode();
 initUserLocation();

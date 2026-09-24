@@ -10,6 +10,8 @@ import { map } from "./map.ts";
 let dot: L.CircleMarker | null = null;
 let accuracyCircle: L.Circle | null = null;
 let watchId: number | null = null;
+let centered = false;
+let permissionStatus: PermissionStatus | null = null;
 
 function ensurePane(): void {
   if (map.getPane("userLocationPane")) return;
@@ -57,14 +59,25 @@ function place(latlng: L.LatLngExpression, accuracy: number): void {
   }
 }
 
-export function initUserLocation(): void {
-  if (!("geolocation" in navigator)) return;
+function startWatching(): void {
   if (watchId !== null) return;
   ensurePane();
   watchId = navigator.geolocation.watchPosition(
     (pos) => {
       const { latitude, longitude, accuracy } = pos.coords;
       place([latitude, longitude], accuracy);
+      if (!centered) {
+        centered = true;
+        const position = L.latLng(latitude, longitude);
+        // The initial city bounds must not clamp a permitted GPS location.
+        const configuredBounds = map.options.maxBounds;
+        const bounds = configuredBounds instanceof L.LatLngBounds
+          ? configuredBounds : configuredBounds ? L.latLngBounds(configuredBounds) : null;
+        if (bounds && !bounds.contains(position)) {
+          map.setMaxBounds(bounds.extend(position).pad(0.1));
+        }
+        map.setView(position, Math.max(map.getZoom(), 15));
+      }
     },
     () => {
       // Permission denied or position unavailable — silent.
@@ -74,4 +87,20 @@ export function initUserLocation(): void {
       maximumAge: 5_000,
     },
   );
+}
+
+export function initUserLocation(): void {
+  if (!("geolocation" in navigator)) return;
+  startWatching();
+  // A denied watch can stop delivering callbacks. Restart it if the user
+  // grants permission later in browser settings without reloading the app.
+  navigator.permissions?.query({ name: "geolocation" }).then((status) => {
+    permissionStatus = status;
+    permissionStatus.addEventListener("change", () => {
+      if (status.state !== "granted") return;
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      startWatching();
+    });
+  }).catch(() => { /* watchPosition works without the Permissions API. */ });
 }

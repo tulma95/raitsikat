@@ -98,6 +98,27 @@ Pick a route id you can see in the live snapshot (e.g. `HSL:1004` for tram,
    polyline must disappear with the bus markers; no ghost overlay carries
    over.
 
+## Remembered mode, language, location, and live departures
+
+1. Switch to buses from `/ratikat`, then choose EN: the link must target
+   `/en/buses`. Repeat in reverse and after Back/forward navigation.
+2. Close and reopen the page or installed app: the last mode should load,
+   with matching URL, tab, language link, stops, and SSE endpoint. Repeat
+   for trams. A saved mode intentionally overrides the launch URL's mode.
+3. Disable localStorage or put an invalid value in `raitsikat.mode`: startup
+   should use the URL's mode and navigation should still work.
+4. Grant location on first launch, then reload with permission already granted:
+   both should center on the first GPS fix. Pan away and confirm later fixes
+   don't recenter. Check a location outside the original Helsinki bounds too.
+5. Deny location, then grant it in browser settings while the page is open:
+   browsers with the Permissions API should restart the watch and center.
+6. Leave a stop popup open over a minute: countdowns should change, past
+   departures disappear, and requests repeat every 30 seconds. Close it,
+   zoom stops out, or switch modes: requests must stop. Reopen to fetch anew.
+7. Fail a departures request: show the error, then recover on a subsequent
+   refresh. Close/reopen during a slow request: the old result must not
+   replace the new popup's data.
+
 ## Filter
 
 1. Toggle off one line in the filter UI → its markers disappear, others stay.
